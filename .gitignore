@@ -1,0 +1,23 @@
+# Registro e configurazioni locali degli assistenti
+/LLM.md
+/.agents/
+/.codex/
+
+# Python: cache e artefatti generati
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Ambienti virtuali e configurazione locale
+.venv/
+venv/
+.env
+.env.*
+!.env.example

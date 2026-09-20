@@ -3,6 +3,9 @@
 /.agents/
 /.codex/
 
+# Modelli e risultati locali
+/outputs/
+
 # Python: cache e artefatti generati
 __pycache__/
 *.py[cod]

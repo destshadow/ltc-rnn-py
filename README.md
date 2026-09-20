@@ -2,7 +2,7 @@
 
 Progetto sperimentale in Python e PyTorch per costruire una rete ricorrente con dinamica a capacità e conduttanze sinaptiche, ispirata alle Liquid Time-Constant networks.
 
-Sono presenti i parametri apprendibili dei neuroni e delle sinapsi, lo stato per batch, il calcolo degli effetti sinaptici e un solver semi-implicito con sottopassi. Completano il progetto script di controllo e una visualizzazione interattiva di una sinapsi. Non sono ancora presenti un modello completo per sequenze, un livello di uscita o un ciclo di addestramento.
+Il progetto comprende una cella LTC, un solver semi-implicito con validazione degli ingressi, l'elaborazione di sequenze e un classificatore con uscita lineare. Sono disponibili dati sintetici sull'ordine temporale, script di controllo e visualizzazioni delle sinapsi e dello stato. Il ciclo di addestramento e la valutazione su dati separati non sono ancora implementati.
 
 ## Dinamica e forme dei tensori
 
@@ -27,6 +27,9 @@ Qui `h = dt / substeps`; le somme comprendono sinapsi sensoriali e ricorrenti. D
 | --- | --- |
 | Ingressi | `[batch, input_size]` |
 | Stato | `[batch, hidden_size]` |
+| Sequenze | `[batch, istanti, input_size]` |
+| Storia degli stati | `[batch, istanti, hidden_size]` |
+| Logits del classificatore | `[batch, num_classes]` |
 | Parametri sinaptici | `[source_size, target_size]` |
 | Conduttanze attive | `[batch, source_size, target_size]` |
 | Drive e conduttanza totale | `[batch, target_size]` |
@@ -110,9 +113,14 @@ python check_neuron_parameters.py
 python check_synapse_parameters.py
 python check_synapses.py
 python check_solver.py
+python check_solver_validation.py
+python check_solver_dynamics.py
+python check_cell.py
+python check_temporal_order.py
+python check_classifier.py
 ```
 
-`check_config.py` controlla la configurazione senza GPU. Gli altri script richiedono CUDA nella loro versione attuale.
+`check_config.py`, `check_solver_validation.py`, `check_solver_dynamics.py` e `check_temporal_order.py` funzionano su CPU. `check_cell.py` aggiunge un confronto CPU/GPU quando CUDA è disponibile; `check_classifier.py` sceglie CUDA se disponibile, altrimenti CPU. Gli altri script elencati richiedono CUDA nella loro versione attuale. Questa lista documenta i controlli disponibili, non attesta che siano stati tutti eseguiti e superati.
 
 | Script | Verifica |
 | --- | --- |
@@ -123,16 +131,39 @@ python check_solver.py
 | `check_synapse_parameters.py` | Forme, positività e gradienti dei parametri sinaptici |
 | `check_synapses.py` | Apertura al 50% sulla soglia, indipendenza dei batch e gradienti verso le sorgenti |
 | `check_solver.py` | Decadimento senza sinapsi e confronto con la soluzione analitica |
+| `check_solver_validation.py` | Rifiuto di batch, dimensioni, tipi numerici e durata non validi nei casi coperti |
+| `check_solver_dynamics.py` | Riferimenti scalari, equivalenza dei sottopassi, stato immutato e gradienti temporali |
+| `check_cell.py` | Composizione della cella, stato iniziale e confronto CPU/GPU opzionale |
+| `check_temporal_order.py` | Struttura delle coppie, etichette e riproducibilità dei dati |
+| `check_classifier.py` | Logits, perdita e gradienti nella cella e nello strato di uscita |
 
 Il test del solver verifica che cento sottopassi siano più accurati di un singolo passo nel caso di decadimento. Non costituisce una verifica completa della dinamica ricorrente o dell'addestramento.
 
-## Visualizzazione interattiva
+## Sequenze e classificazione
+
+`LTCCell` raggruppa i parametri dei neuroni e le sinapsi sensoriali e ricorrenti. Lo stato iniziale segue dispositivo e tipo numerico della cella. `run_sequence` elabora ingressi `[batch, istanti, ingressi]` e restituisce storia e stato finale, mantenendo il percorso dei gradienti. Accetta anche uno stato iniziale esplicito.
+
+`SequenceClassifier` applica `nn.Linear` allo stato finale e restituisce logits utilizzabili con `CrossEntropyLoss`. `check_classifier.py` calcola una perdita e chiama `backward()`, ma non aggiorna i pesi: le previsioni stampate sono quelle del modello non addestrato.
+
+`make_temporal_order(pairs, seed=...)` genera `2 * pairs` sequenze di 30 passi, ciascuna con due impulsi opposti. La classe 0 presenta prima l'impulso positivo, la classe 1 quello negativo. Ogni coppia condivide posizioni e ampiezza; gli ultimi campioni sono sempre zero. Il seme rende riproducibile la generazione.
+
+Il compito richiede conservare informazione dagli impulsi precedenti, ma può essere risolto ricordando il segno dell'ultimo impulso non nullo: non misura da solo capacità temporali generali.
+
+## Visualizzazioni
 
 ```bash
 python -m visualization.synapse_viewer
 ```
 
 Il grafico mostra la conduttanza di una sinapsi al variare della sorgente. Tre slider modificano soglia, pendenza e intensità. La visualizzazione usa la CPU e richiede un ambiente grafico con un backend interattivo di Matplotlib; va avviata come modulo dalla radice del repository.
+
+Per osservare la risposta dello stato a un impulso:
+
+```bash
+python -m visualization.state_viewer
+```
+
+Il secondo viewer usa una cella non addestrata su CPU e mostra ingresso, stati dei neuroni e distanza tra la traiettoria con impulso e quella con ingresso nullo. Richiede anch'esso un backend grafico interattivo.
 
 ## Struttura
 
@@ -144,14 +175,20 @@ Il grafico mostra la conduttanza di una sinapsi al variare della sorgente. Tre s
 | `ltc/synapse_parameters.py` | Parametri apprendibili dei collegamenti |
 | `ltc/synapses.py` | Conduttanze, drive e somme sulle sorgenti |
 | `ltc/solver.py` | Aggiornamento semi-implicito e avanzamento per sottopassi |
+| `ltc/validation.py` | Validazione di durata, forme, dispositivi e tipi numerici |
+| `ltc/cell.py` | Cella LTC e stato iniziale coerente con dispositivo e tipo numerico |
+| `ltc/sequence.py` | Elaborazione delle sequenze e raccolta degli stati |
+| `data/temporal_order.py` | Generazione riproducibile di coppie di impulsi |
+| `models/sequence_classifier.py` | Classificatore basato sullo stato finale |
 | `visualization/synapse_curve.py` | Campionamento della curva sinaptica |
 | `visualization/synapse_viewer.py` | Grafico interattivo con slider |
+| `visualization/state_viewer.py` | Risposta dello stato a un impulso e confronto con ingresso nullo |
 | `check_*.py` | Script di controllo |
 | `.gitignore` | Esclusione di ambienti virtuali, cache e file locali |
 
 ## Limiti attuali
 
-- Il solver non verifica ancora tutte le compatibilità di batch, dimensioni, dispositivo e tipo numerico: alcune forme incoerenti possono essere accettate tramite broadcasting.
-- `advance_state` valida `dt` e `substeps`; chi chiama direttamente `semi_implicit_step` deve fornire una durata finita e positiva e tensori compatibili.
-- Mancano controlli integrati su sequenze complete e risultati di addestramento.
+- `advance_state` valida durata, sottopassi e compatibilità dei tensori e dei parametri. `semi_implicit_step` valida la durata; chi lo chiama direttamente deve fornire tensori compatibili.
+- Non sono ancora disponibili un ciclo di ottimizzazione, risultati di accuratezza o una valutazione su dati separati.
+- `run_sequence` usa una durata scalare comune ai passi e raccoglie sempre tutta la storia, anche quando il classificatore utilizza solo lo stato finale.
 - Le dipendenze non sono ancora fissate integralmente per riprodurre l'ambiente.

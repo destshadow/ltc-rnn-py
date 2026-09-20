@@ -1,10 +1,9 @@
-
-from .validation import validate_duration, validate_solver_inputs
 import torch
 
 from .neuron_parameters import NeuronParameters
 from .synapse_parameters import SynapseParameters
 from .synapses import compute_synaptic_effects
+from .validation import validate_duration, validate_solver_inputs
 
 
 def semi_implicit_step(
@@ -15,6 +14,8 @@ def semi_implicit_step(
     step_duration: float,
 ) -> torch.Tensor:
     """Calcola un singolo piccolo aggiornamento dello stato."""
+    validate_duration(step_duration)
+
     capacity_rate = neurons.capacitance / step_duration
     leak = neurons.leak_conductance
 
@@ -40,8 +41,8 @@ def advance_state(
     substeps: int,
 ) -> torch.Tensor:
     """Fa avanzare lo stato per un intervallo dt."""
-    if not math.isfinite(dt) or dt <= 0:
-        raise ValueError("dt deve essere finito e maggiore di zero.")
+    validate_duration(dt)
+    validate_solver_inputs(inputs, state, neurons, sensory, recurrent)
 
     if type(substeps) is not int or substeps <= 0:
         raise ValueError("substeps deve essere un intero positivo.")

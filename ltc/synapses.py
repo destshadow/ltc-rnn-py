@@ -24,7 +24,7 @@ def compute_conductances(
     source_values = sources.unsqueeze(-1)
 
     activation = torch.sigmoid(
-        params.slope * (source_values - params.threshold)
+        params.slope * (source_values - params.threshold) #parte liquida della funzione di attivazione, che determina quanto i neuroni sorgente influenzano i neuroni destinazione ?
     )
 
     return params.strength * activation

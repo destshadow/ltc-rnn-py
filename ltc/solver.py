@@ -25,7 +25,7 @@ def semi_implicit_step(
         + drive
     )
 
-    denominator = capacity_rate + leak + total_conductance
+    denominator = capacity_rate + leak + total_conductance #conduttanze, influenzano sia la velocità di risposta sia la direzione verso cui viene spinto lo stato
 
     return numerator / denominator
 

@@ -31,6 +31,7 @@ class SequenceClassifier(nn.Module):
             self.cell,
             inputs,
             dt=dt,
+            collect_history=False,
         )
 
         return self.readout(final_state)

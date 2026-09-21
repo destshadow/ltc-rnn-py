@@ -4,6 +4,74 @@ Progetto sperimentale in Python e PyTorch per costruire una rete ricorrente con 
 
 Il progetto comprende una cella LTC, un solver semi-implicito, un classificatore di sequenze e inferenza streaming con stato persistente. Sono disponibili dati sintetici sull'ordine temporale, addestramento, selezione del checkpoint su validazione, test separato e analisi della memoria e della soglia decisionale. Checkpoint e risultati restano locali nella cartella `outputs/`, esclusa da Git.
 
+## Prima tappa completata — 2026-09-21
+
+La prima tappa comprende LTC modulare, addestramento, valutazione separata, esportazione per inferenza, streaming con memoria persistente e visualizzazione interattiva.
+
+**Limite attuale: riconoscimento di due ordini di eventi sintetici (A-B-C e B-A-C), con decisione valutata a fine sequenza.** I margini intermedi visualizzati sono provvisori; questi risultati non dimostrano riconoscimento continuo di fenomeni reali.
+
+### Checkpoint di riferimento
+
+| Voce | Riferimento |
+| --- | --- |
+| Checkpoint | `outputs/event_order_noise_20260921T150040_212480Z/best.pt` |
+| Bundle della demo | `outputs/event_order_inference_1000ep.pt` |
+| Epoca selezionata | 1000 |
+| Configurazione | 3 ingressi, 8 neuroni nascosti, 6 sottopassi, `dt = 0.1` |
+| Rumore di training / validazione | `0.0` / `0.01` |
+| Soglia esportata | `-0.16052579879760742`, scelta sul training pulito su CPU |
+| Versione PyTorch registrata | `2.13.0+cu130` |
+
+SHA-256 del checkpoint, coincidente con quello registrato nel bundle e nel protocollo del test:
+
+```text
+27ad3b7c1beee3720bfd2290d3ff93a904dd8c4093de52fba3458585fce45dfb
+```
+
+Checkpoint, bundle e report restano locali in `outputs/`, esclusa da Git: il clone del repository non li contiene. Conservare questi artefatti per riprodurre la demo con gli stessi pesi; un nuovo training non garantisce un file identico.
+
+### Risultati principali registrati
+
+Risultati letti dal checkpoint e da `outputs/event_order_test_20260921T152429_193858Z/{protocol,results}.json`, senza rieseguire training o valutazione per questo aggiornamento. Il test usa 1000 coppie (2000 sequenze), seme 271828, CPU e rumore gaussiano additivo con semi 1101, 2202 e 3303. La soglia è fissata sul training, prima del test.
+
+| Valutazione | Risultato |
+| --- | --- |
+| Validazione pulita, seme 2026 | 256/256 (100%), perdita `3.95424e-6` |
+| Validazione con rumore `0.01`, seme 808 | 256/256 (100%), perdita `3.72378e-6` |
+| Test pulito, soglia zero e soglia esportata | 2000/2000 (100%) |
+| Test con rumore `0.001`, `0.005`, `0.01`, `0.02` | 2000/2000 per ciascun seme, con entrambe le soglie |
+| Test con rumore `0.05`, soglia esportata | 2000/2000 per ciascun seme |
+| Test con rumore `0.05`, soglia zero | 1999/2000 (99.95%) con seme 1101; 2000/2000 con gli altri due semi |
+
+Sono risultati di un checkpoint su un insieme sintetico e sui semi indicati, non una garanzia per altri dati o livelli di rumore.
+
+### Comandi della demo
+
+Dalla radice del progetto, con il bundle locale disponibile:
+
+```bash
+source .venv/bin/activate
+python visualize_stream.py --class-id 0 --seed 2026 --noise 0
+python visualize_stream.py --class-id 1 --seed 2026 --noise 0
+python visualize_stream.py --class-id 0 --seed 2026 --noise 0.05 --noise-seed 1101
+```
+
+Il percorso predefinito è `outputs/event_order_inference_1000ep.pt`; `--bundle <percorso>` lo sostituisce. `--seed` controlla la sequenza, `--noise` la deviazione standard del rumore e `--noise-seed` la sua realizzazione. Servono Matplotlib e un backend grafico interattivo.
+
+**Pausa** ferma la riproduzione; **Un passo** mette in pausa e avanza di un campione; **Riprendi** continua dal successivo. **Ricomincia** svuota i grafici, azzera anche la memoria LTC tramite `initialize()` e `stream.reset()` e resta in pausa. I callback sono stati verificati con una LTC su CPU e timer controllato su backend Agg, incluso il riavvio a sequenza conclusa; questa verifica non sostituisce una prova dei clic sul backend GUI.
+
+Per esportare nuovamente il riferimento, solo se il file di destinazione non esiste:
+
+```bash
+python prepare_inference.py --checkpoint outputs/event_order_noise_20260921T150040_212480Z/best.pt --output outputs/event_order_inference_1000ep.pt
+```
+
+### Prossima tappa: sequenze da file
+
+La prossima tappa, ancora da implementare, è separare la provenienza dei dati dalla rete e collegare la demo a sequenze lette da un file. Si partirà da un piccolo file con gli stessi canali A, B e C, confrontando i campioni caricati e le uscite della rete con quelli del generatore, a parità di sequenza, `dt` e stato iniziale.
+
+Questa separazione preparerà l'acquisizione da sensori. Per riconoscere fenomeni reali serviranno dati rappresentativi, etichette appropriate e un nuovo addestramento con valutazione separata.
+
 ## Riattivare l'ambiente virtuale
 
 A ogni nuovo terminale Bash/WSL, dalla cartella del progetto:
@@ -198,7 +266,7 @@ Il training usa mini-batch, Adam, clipping dei gradienti e insiemi generati con 
 - `inspect_decision_threshold.py` sceglie la soglia esclusivamente sul training e confronta training e validazione, senza modificare il checkpoint.
 - `test_event_order.py --checkpoint <percorso>` usa la CPU e sceglie la soglia sul training pulito prima di generare il test: 1000 coppie con seme 271828, distinto dai semi di training e validazione. Confronta soglia zero e soglia scelta su dati puliti e con rumore a livelli `0.001`, `0.005`, `0.01`, `0.02`, `0.05`, con semi 1101/2202/3303. Riporta risultati per attesa e salva il protocollo prima della valutazione e i risultati progressivamente in `outputs/event_order_test_<timestamp>/`. Il protocollo comprende hash SHA-256, epoca del checkpoint, configurazione, dispositivo e versione PyTorch.
 
-La decisione binaria usa il margine `logit_0 - logit_1`: sotto la soglia assegna classe 1, altrimenti classe 0. La soglia scelta dagli script non viene applicata automaticamente al modello o allo stream. I comandi descrivono gli esperimenti disponibili; qui non sono riportati risultati di accuratezza verificati.
+La decisione binaria usa il margine `logit_0 - logit_1`: sotto la soglia assegna classe 1, altrimenti classe 0. La soglia scelta dagli script non viene applicata automaticamente al modello o allo stream. I risultati salvati del checkpoint di riferimento sono riportati nella sezione sulla prima tappa.
 
 ### Esperimento con rumore configurabile
 
@@ -256,7 +324,7 @@ python visualize_stream.py --bundle outputs/event_order_inference_1000ep.pt --cl
 python visualize_stream.py --bundle outputs/event_order_inference_1000ep.pt --class-id 1
 ```
 
-Il viewer usa la CPU e anima una sequenza sintetica A-B-C o B-A-C (seme 2026), mostrando ingressi, stato dei neuroni e margine rispetto alla soglia salvata. Le decisioni intermedie sono indicate come provvisorie: il classificatore è addestrato sullo stato finale. Richiede il bundle esportato e un backend grafico interattivo di Matplotlib. `--bundle` permette di usare un percorso diverso.
+Il viewer usa la CPU e anima una sequenza sintetica A-B-C o B-A-C (`--seed`, predefinito 2026), con rumore opzionale (`--noise`, predefinito 0.0; `--noise-seed`, predefinito 1101), mostrando ingressi, stato dei neuroni e margine rispetto alla soglia salvata. Le decisioni intermedie sono indicate come provvisorie: il classificatore è addestrato sullo stato finale. Richiede il bundle esportato e un backend grafico interattivo di Matplotlib. `--bundle` permette di usare un percorso diverso.
 
 
 ```bash
@@ -303,7 +371,9 @@ Il secondo viewer usa una cella non addestrata su CPU e mostra ingresso, stati d
 | `visualization/state_viewer.py` | Risposta dello stato a un impulso e confronto con ingresso nullo |
 | `visualization/memory_grid_viewer.py` | Visualizzazione della memoria del modello addestrato sui due impulsi |
 | `train_*.py`, `evaluate_temporal_order.py`, `inspect_*.py`, `test_event_order.py` | Esperimenti, valutazione e analisi dei checkpoint |
-| `visualize_stream.py` | Animazione di ingressi, stati e decisioni in streaming |
+| `visualize_stream.py` | Caricamento del bundle, preparazione dei dati e animazione streaming |
+| `visualization/stream_plot.py` | Creazione dei pannelli e spazio per i controlli |
+| `visualization/playback.py` | Pausa, avanzamento singolo e riavvio |
 | `check_*.py` | Script di controllo |
 | `.gitignore` | Esclusione di ambienti virtuali, cache e file locali |
 

@@ -7,50 +7,12 @@ from matplotlib.animation import FuncAnimation
 from data.event_order import make_event_order
 from inference.loading import load_inference_model
 from inference.stream import LTCStream
+from visualization.stream_plot import create_panels
+from visualization.playback import PlaybackControls
 
+import math
 
-def create_panels(sequence, hidden_size, dt):
-    figure, axes = plt.subplots(
-        3, 1, figsize=(11, 8), sharex=True,
-        constrained_layout=True,
-    )
-
-    duration = sequence.shape[0] * dt
-
-    for axis in axes:
-        axis.set_xlim(0, duration)
-        axis.grid(alpha=0.25)
-
-    axes[0].set_ylabel("Ingresso")
-    axes[0].set_ylim(-0.1, sequence.max().item() * 1.15)
-
-    input_lines = [
-        axes[0].step([], [], where="post", label=name)[0]
-        for name in ("A", "B", "C")
-    ]
-    axes[0].legend(loc="upper right")
-
-    axes[1].set_ylabel("Stato interno")
-    state_lines = [
-        axes[1].plot([], [], label=f"N{index}")[0]
-        for index in range(hidden_size)
-    ]
-    axes[1].legend(loc="upper right", ncol=4)
-
-    axes[2].set_ylabel("Margine rispetto\nalla soglia")
-    axes[2].set_xlabel("Tempo del modello")
-    axes[2].axhline(0, color="black", linestyle="--")
-    decision_line, = axes[2].plot([], [], color="purple")
-    decision_text = axes[2].text(
-        0.02, 0.95, "",
-        transform=axes[2].transAxes,
-        va="top",
-    )
-
-    return (
-        figure, axes, input_lines, state_lines,
-        decision_line, decision_text,
-    )
+from data.noise import add_gaussian_noise
 
 
 def main():
@@ -62,13 +24,33 @@ def main():
     parser.add_argument(
         "--class-id", type=int, choices=(0, 1), default=0,
     )
+
+    parser.add_argument("--seed", type=int, default=2026)
+    parser.add_argument("--noise", type=float, default=0.0)
+    parser.add_argument("--noise-seed", type=int, default=1101)
+
     args = parser.parse_args()
+
+    if not math.isfinite(args.noise) or args.noise < 0:
+        parser.error("--noise deve essere finito e non negativo.")
 
     model, bundle = load_inference_model(
         args.bundle, device="cpu"
     )
 
-    inputs, labels = make_event_order(pairs=1, seed=2026)
+    inputs, labels = make_event_order(
+        pairs=1,
+        seed=args.seed,
+    )
+
+    if args.noise > 0:
+        generator = torch.Generator().manual_seed(args.noise_seed)
+        inputs = add_gaussian_noise(
+            inputs,
+            std=args.noise,
+            generator=generator,
+        )
+
     sequence = inputs[args.class_id]
     expected = labels[args.class_id].item()
 
@@ -84,7 +66,8 @@ def main():
 
     names = {0: "A-B-C", 1: "B-A-C"}
     figure.suptitle(
-        f"LTC in streaming — sequenza attesa: {names[expected]}"
+        f"LTC in streaming — attesa: {names[expected]} | "
+        f"seme: {args.seed} | rumore: {args.noise:g}"
     )
 
     # Lo stato iniziale è quello nullo usato dalla nostra cella.
@@ -96,6 +79,8 @@ def main():
         *input_lines, *state_lines,
         decision_line, decision_text,
     ]
+
+    controls = None
 
     def initialize():
         stream.reset()
@@ -156,6 +141,9 @@ def main():
             f"campione {index + 1}/{len(sequence)}"
         )
 
+        if controls is not None:
+            controls.mark_frame(index)
+
         return artists
 
     animation = FuncAnimation(
@@ -167,6 +155,14 @@ def main():
         repeat=False,
         blit=False,
         cache_frame_data=False,
+    )
+
+    controls = PlaybackControls(
+        figure=figure,
+        animation=animation,
+        initialize=initialize,
+        update=update,
+        frame_count=len(sequence),
     )
 
     # Il riferimento resta vivo fino alla chiusura della finestra.

@@ -10,7 +10,7 @@ from models.sequence_classifier import SequenceClassifier
 @torch.no_grad()
 def main():
     bundle = torch.load(
-        "outputs/event_order_inference.pt",
+        "outputs/event_order_inference_1000ep.pt",
         map_location="cpu",
         weights_only=True,
     )

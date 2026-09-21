@@ -4,6 +4,17 @@ Progetto sperimentale in Python e PyTorch per costruire una rete ricorrente con 
 
 Il progetto comprende una cella LTC, un solver semi-implicito, un classificatore di sequenze e inferenza streaming con stato persistente. Sono disponibili dati sintetici sull'ordine temporale, addestramento, selezione del checkpoint su validazione, test separato e analisi della memoria e della soglia decisionale. Checkpoint e risultati restano locali nella cartella `outputs/`, esclusa da Git.
 
+## Riattivare l'ambiente virtuale
+
+A ogni nuovo terminale Bash/WSL, dalla cartella del progetto:
+
+```bash
+cd "/mnt/c/Users/amara/Desktop/LTC RNN py"
+source .venv/bin/activate
+```
+
+Se sei già nella cartella, basta `source .venv/bin/activate`. Non serve ricreare l'ambiente né reinstallare le dipendenze. Il prompt normalmente mostra `(.venv)`; `which python` deve indicare l'interprete dentro `.venv/bin/`. Per uscire: `deactivate`. Questi comandi si riferiscono all'ambiente Linux/WSL del progetto.
+
 ## Dinamica e forme dei tensori
 
 Ogni neurone ha capacità, conduttanza di perdita e potenziale di riposo. Ogni collegamento ha intensità, pendenza, soglia e potenziale di inversione. Capacità, conduttanza di perdita, intensità e pendenza sono ottenute tramite `softplus` con un piccolo termine positivo.
@@ -159,7 +170,7 @@ Il secondo dataset, `make_event_order`, genera coppie A-B-C/B-A-C su tre canali 
 
 ## Addestramento e analisi
 
-Tutti i comandi vanno eseguiti dalla radice, con `.venv` attivo. Gli script scelgono CUDA se disponibile, altrimenti CPU. I checkpoint non sono inclusi nel repository: generarli prima delle analisi che li richiedono.
+Tutti i comandi vanno eseguiti dalla radice, con `.venv` attivo. Gli script di training scelgono CUDA se disponibile, altrimenti CPU; il test separato e l’esportazione per inferenza usano la CPU. I checkpoint non sono inclusi nel repository: generarli prima delle analisi che li richiedono.
 
 ### Esperimento con due impulsi
 
@@ -178,14 +189,14 @@ Il training salva `outputs/tiny_checkpoint.pt`. Gli altri comandi caricano quel 
 python train_event_order.py
 python inspect_event_memory.py
 python inspect_decision_threshold.py
-python test_event_order.py
+python test_event_order.py --checkpoint outputs/event_order_best.pt
 ```
 
 Il training usa mini-batch, Adam, clipping dei gradienti e insiemi generati con semi distinti: 123 per training, 2026 per validazione. Valuta ogni dieci epoche, includendo l'epoca zero, e salva il checkpoint con la minore perdita tra le epoche valutate in `outputs/event_order_best.pt`. Una nuova esecuzione può sovrascrivere questo file.
 
 - `inspect_event_memory.py` analizza gli stati delle coppie prima e dopo C e alla fine, raggruppando le distanze per attesa; riporta anche margini e classificazioni sui dati di validazione.
 - `inspect_decision_threshold.py` sceglie la soglia esclusivamente sul training e confronta training e validazione, senza modificare il checkpoint.
-- `test_event_order.py` sceglie la soglia sul training prima di generare il test: 1000 coppie con seme 314159. Confronta soglia zero e soglia scelta, riporta risultati per attesa e salva `protocol.json` e `results.json` in una nuova cartella `outputs/event_order_test_<timestamp>/`. Il protocollo comprende hash SHA-256 del checkpoint, configurazione e versione PyTorch.
+- `test_event_order.py --checkpoint <percorso>` usa la CPU e sceglie la soglia sul training pulito prima di generare il test: 1000 coppie con seme 271828, distinto dai semi di training e validazione. Confronta soglia zero e soglia scelta su dati puliti e con rumore a livelli `0.001`, `0.005`, `0.01`, `0.02`, `0.05`, con semi 1101/2202/3303. Riporta risultati per attesa e salva il protocollo prima della valutazione e i risultati progressivamente in `outputs/event_order_test_<timestamp>/`. Il protocollo comprende hash SHA-256, epoca del checkpoint, configurazione, dispositivo e versione PyTorch.
 
 La decisione binaria usa il margine `logit_0 - logit_1`: sotto la soglia assegna classe 1, altrimenti classe 0. La soglia scelta dagli script non viene applicata automaticamente al modello o allo stream. I comandi descrivono gli esperimenti disponibili; qui non sono riportati risultati di accuratezza verificati.
 
@@ -211,25 +222,42 @@ Il criterio di selezione resta la media delle perdite di validazione pulita e ru
 | `push(sample)` | Un campione `[input_size]` |
 | `push_block(samples)` | Un blocco non vuoto `[istanti, input_size]` |
 | `reset()` | Elimina lo stato per iniziare un flusso indipendente |
+| `state_snapshot()` | Copia indipendente dello stato, senza gradienti; `None` prima del primo campione o dopo il reset |
 
 Entrambi i metodi di inserimento restituiscono logits `[1, num_classes]` dopo l'ultimo campione ricevuto, senza registrare gradienti. Gli ingressi vengono convertiti al dispositivo e al tipo numerico del modello. Lo stream non applica soglie né restituisce probabilità: mantiene la continuità dello stato tra chiamate, fino al reset.
 
 ### Esportazione, decisione e misure
 
 ```bash
-python prepare_inference.py
-python check_stream_decision.py
+python prepare_inference.py --checkpoint outputs/event_order_best.pt --output outputs/event_order_inference.pt
 python benchmark_stream.py
 python inspect_noise_robustness.py
 ```
 
-`prepare_inference.py` carica `outputs/event_order_best.pt`, sceglie la soglia sul training ed esporta `outputs/event_order_inference.pt` con pesi, configurazione, soglia e hash del checkpoint sorgente. Rifiuta di sovrascrivere un'esportazione esistente. Gli altri tre comandi richiedono questo file.
+`prepare_inference.py` richiede `--checkpoint` e `--output`, controlla che il modello abbia due classi e sceglie la soglia sul training in modalità valutazione su CPU. Esporta pesi, configurazione, soglia, percorso e hash del checkpoint, epoca sorgente, dispositivo della soglia e versione PyTorch. Crea le cartelle necessarie e salva con apertura esclusiva (`xb`), senza sovrascrivere file esistenti. I due comandi successivi richiedono `outputs/event_order_inference.pt`.
 
 `inference/loading.py` carica il bundle; `inference/decision.py` applica la soglia ai logits binari. `check_stream_decision.py` controlla equivalenza delle decisioni tra sequenza intera e streaming e correttezza sulle quattro sequenze generate. `benchmark_stream.py` misura la latenza per campione inclusa la decisione, su CPU e su CUDA se disponibile, riportando mediana, 95° percentile e massimo.
 
 `inspect_noise_robustness.py` valuta su CPU il bundle con la soglia salvata, sui dati di validazione e sui livelli di rumore e semi descritti sopra. Salva il report in `outputs/noise_validation_<timestamp>/results.json`. Questi comandi documentano gli strumenti disponibili; non attestano risultati verificati.
 
+`check_stream_decision.py` usa invece il percorso fisso `outputs/event_order_inference_1000ep.pt`. Per prepararlo dal checkpoint desiderato:
+
+```bash
+python prepare_inference.py --checkpoint outputs/event_order_noise_<timestamp>/best.pt --output outputs/event_order_inference_1000ep.pt
+python check_stream_decision.py
+```
+
+Sostituire `<timestamp>` con la cartella reale. Il suffisso `1000ep` è un nome di file: il checkpoint migliore può provenire da un'epoca precedente alla millesima. Il controllo richiede anche che tutte e quattro le sequenze siano classificate correttamente; un errore di accuratezza non dimostra da solo un errore nello streaming.
+
 ## Visualizzazioni
+
+```bash
+python visualize_stream.py --bundle outputs/event_order_inference_1000ep.pt --class-id 0
+python visualize_stream.py --bundle outputs/event_order_inference_1000ep.pt --class-id 1
+```
+
+Il viewer usa la CPU e anima una sequenza sintetica A-B-C o B-A-C (seme 2026), mostrando ingressi, stato dei neuroni e margine rispetto alla soglia salvata. Le decisioni intermedie sono indicate come provvisorie: il classificatore è addestrato sullo stato finale. Richiede il bundle esportato e un backend grafico interattivo di Matplotlib. `--bundle` permette di usare un percorso diverso.
+
 
 ```bash
 python -m visualization.synapse_viewer
@@ -275,6 +303,7 @@ Il secondo viewer usa una cella non addestrata su CPU e mostra ingresso, stati d
 | `visualization/state_viewer.py` | Risposta dello stato a un impulso e confronto con ingresso nullo |
 | `visualization/memory_grid_viewer.py` | Visualizzazione della memoria del modello addestrato sui due impulsi |
 | `train_*.py`, `evaluate_temporal_order.py`, `inspect_*.py`, `test_event_order.py` | Esperimenti, valutazione e analisi dei checkpoint |
+| `visualize_stream.py` | Animazione di ingressi, stati e decisioni in streaming |
 | `check_*.py` | Script di controllo |
 | `.gitignore` | Esclusione di ambienti virtuali, cache e file locali |
 

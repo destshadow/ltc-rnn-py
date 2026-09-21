@@ -21,6 +21,13 @@ class LTCStream:
         """Inizia un nuovo flusso indipendente."""
         self._state = None
 
+    def state_snapshot(self) -> torch.Tensor | None:
+        """Restituisce una copia indipendente dello stato corrente."""
+        if self._state is None:
+            return None
+
+        return self._state.detach().clone()
+
     @torch.no_grad()
     def push_block(self, samples: torch.Tensor) -> torch.Tensor:
         """Riceve [istanti, ingressi] e restituisce [1, classi]."""

@@ -99,7 +99,7 @@ def main():
         inputs, labels, noises, levels,
     )
 
-    print("Valutazione modello addestrato con rumore...", flush=True)
+    print("Valutazione modello candidato...", flush=True)
     augmented = evaluate_model(
         args.noisy_checkpoint,
         inputs, labels, noises, levels,

@@ -8,10 +8,20 @@ from ltc.config import LTCConfig
 from models.sequence_classifier import SequenceClassifier
 from training.decision import collect_margins, choose_threshold
 
+import argparse
+
 
 def main():
-    source_path = Path("outputs/event_order_best.pt")
-    output_path = Path("outputs/event_order_inference.pt")
+
+    parser = argparse.ArgumentParser(
+        description="Prepara un modello LTC per l'inferenza."
+    )
+    parser.add_argument("--checkpoint", type=Path, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    args = parser.parse_args()
+
+    source_path = args.checkpoint
+    output_path = args.output
 
     if output_path.exists():
         raise FileExistsError(
@@ -24,9 +34,10 @@ def main():
         weights_only=True,
     )
 
-    device = torch.device(
-        "cuda" if torch.cuda.is_available() else "cpu"
-    )
+    if checkpoint["num_classes"] != 2:
+        raise ValueError("Questa esportazione richiede due classi.")
+
+    device = torch.device("cpu")
 
     model = SequenceClassifier(
         LTCConfig(**checkpoint["config"]),
@@ -34,6 +45,7 @@ def main():
     )
     model.load_state_dict(checkpoint["model_state_dict"])
     model = model.to(device)
+    model.eval()
 
     inputs, labels = make_event_order(
         pairs=checkpoint["training_pairs"],
@@ -56,12 +68,19 @@ def main():
         "threshold_source": "training",
         "training_seed": checkpoint["training_seed"],
         "training_pairs": checkpoint["training_pairs"],
+        "source_checkpoint": str(source_path),
+        "source_epoch": checkpoint["epoch"],
+        "threshold_device": str(device),
+        "torch_version": str(torch.__version__),
         "source_checkpoint_sha256": hashlib.sha256(
             source_path.read_bytes()
         ).hexdigest(),
     }
 
-    torch.save(bundle, output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with output_path.open("xb") as output_file:
+        torch.save(bundle, output_file)
 
     print(f"Soglia salvata: {threshold:.12f}")
     print("File per l'esecuzione:", output_path)

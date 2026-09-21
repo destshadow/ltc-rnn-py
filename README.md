@@ -2,7 +2,7 @@
 
 Progetto sperimentale in Python e PyTorch per costruire una rete ricorrente con dinamica a capacità e conduttanze sinaptiche, ispirata alle Liquid Time-Constant networks.
 
-Il progetto comprende una cella LTC, un solver semi-implicito con validazione degli ingressi, l'elaborazione di sequenze e un classificatore con uscita lineare. Sono disponibili dati sintetici sull'ordine temporale, script di controllo e visualizzazioni delle sinapsi e dello stato. Il ciclo di addestramento e la valutazione su dati separati non sono ancora implementati.
+Il progetto comprende una cella LTC, un solver semi-implicito, un classificatore di sequenze e inferenza streaming con stato persistente. Sono disponibili dati sintetici sull'ordine temporale, addestramento, selezione del checkpoint su validazione, test separato e analisi della memoria e della soglia decisionale. Checkpoint e risultati restano locali nella cartella `outputs/`, esclusa da Git.
 
 ## Dinamica e forme dei tensori
 
@@ -118,9 +118,12 @@ python check_solver_dynamics.py
 python check_cell.py
 python check_temporal_order.py
 python check_classifier.py
+python check_event_order.py
+python check_sequence_modes.py
+python check_stream.py
 ```
 
-`check_config.py`, `check_solver_validation.py`, `check_solver_dynamics.py` e `check_temporal_order.py` funzionano su CPU. `check_cell.py` aggiunge un confronto CPU/GPU quando CUDA è disponibile; `check_classifier.py` sceglie CUDA se disponibile, altrimenti CPU. Gli altri script elencati richiedono CUDA nella loro versione attuale. Questa lista documenta i controlli disponibili, non attesta che siano stati tutti eseguiti e superati.
+`check_config.py`, `check_solver_validation.py`, `check_solver_dynamics.py`, `check_temporal_order.py`, `check_event_order.py` e `check_sequence_modes.py` funzionano su CPU. `check_cell.py` aggiunge un confronto CPU/GPU quando CUDA è disponibile; `check_classifier.py` e `check_stream.py` scelgono CUDA se disponibile, altrimenti CPU. `check_stream.py` richiede `outputs/event_order_best.pt`. Gli altri script elencati richiedono CUDA nella loro versione attuale. Questa lista documenta i controlli disponibili, non attesta che siano stati tutti eseguiti e superati.
 
 | Script | Verifica |
 | --- | --- |
@@ -136,18 +139,95 @@ python check_classifier.py
 | `check_cell.py` | Composizione della cella, stato iniziale e confronto CPU/GPU opzionale |
 | `check_temporal_order.py` | Struttura delle coppie, etichette e riproducibilità dei dati |
 | `check_classifier.py` | Logits, perdita e gradienti nella cella e nello strato di uscita |
+| `check_event_order.py` | Struttura e riproducibilità delle coppie A-B-C/B-A-C |
+| `check_sequence_modes.py` | Equivalenza di stati finali e gradienti con e senza raccolta della storia |
+| `check_stream.py` | Equivalenza tra sequenza intera, blocchi e singoli campioni; reset |
 
 Il test del solver verifica che cento sottopassi siano più accurati di un singolo passo nel caso di decadimento. Non costituisce una verifica completa della dinamica ricorrente o dell'addestramento.
 
 ## Sequenze e classificazione
 
-`LTCCell` raggruppa i parametri dei neuroni e le sinapsi sensoriali e ricorrenti. Lo stato iniziale segue dispositivo e tipo numerico della cella. `run_sequence` elabora ingressi `[batch, istanti, ingressi]` e restituisce storia e stato finale, mantenendo il percorso dei gradienti. Accetta anche uno stato iniziale esplicito.
+`LTCCell` raggruppa i parametri dei neuroni e le sinapsi sensoriali e ricorrenti. Lo stato iniziale segue dispositivo e tipo numerico della cella. `run_sequence` elabora ingressi `[batch, istanti, ingressi]` e restituisce `(history, final_state)`, mantenendo il percorso dei gradienti. Accetta uno stato iniziale esplicito e `collect_history`: con `True` raccoglie gli stati; con `False` restituisce `None` come storia. Il classificatore usa `False`. Questo evita la raccolta e lo stacking espliciti, ma non elimina le informazioni necessarie ad autograd durante l'addestramento.
 
 `SequenceClassifier` applica `nn.Linear` allo stato finale e restituisce logits utilizzabili con `CrossEntropyLoss`. `check_classifier.py` calcola una perdita e chiama `backward()`, ma non aggiorna i pesi: le previsioni stampate sono quelle del modello non addestrato.
 
 `make_temporal_order(pairs, seed=...)` genera `2 * pairs` sequenze di 30 passi, ciascuna con due impulsi opposti. La classe 0 presenta prima l'impulso positivo, la classe 1 quello negativo. Ogni coppia condivide posizioni e ampiezza; gli ultimi campioni sono sempre zero. Il seme rende riproducibile la generazione.
 
 Il compito richiede conservare informazione dagli impulsi precedenti, ma può essere risolto ricordando il segno dell'ultimo impulso non nullo: non misura da solo capacità temporali generali.
+
+Il secondo dataset, `make_event_order`, genera coppie A-B-C/B-A-C su tre canali e 48 passi. Posizioni e ampiezza sono condivise nella coppia, l'evento finale C è identico e l'attesa successiva varia da 0 a 30 passi. La classe 0 corrisponde ad A-B-C, la classe 1 a B-A-C.
+
+## Addestramento e analisi
+
+Tutti i comandi vanno eseguiti dalla radice, con `.venv` attivo. Gli script scelgono CUDA se disponibile, altrimenti CPU. I checkpoint non sono inclusi nel repository: generarli prima delle analisi che li richiedono.
+
+### Esperimento con due impulsi
+
+```bash
+python train_tiny.py
+python evaluate_temporal_order.py
+python inspect_temporal_errors.py
+python -m visualization.memory_grid_viewer
+```
+
+Il training salva `outputs/tiny_checkpoint.pt`. Gli altri comandi caricano quel file per valutare il modello, analizzare gli errori e visualizzare l'effetto di ampiezza e attesa sulla memoria. Il viewer richiede un backend grafico interattivo.
+
+### Esperimento A-B-C/B-A-C
+
+```bash
+python train_event_order.py
+python inspect_event_memory.py
+python inspect_decision_threshold.py
+python test_event_order.py
+```
+
+Il training usa mini-batch, Adam, clipping dei gradienti e insiemi generati con semi distinti: 123 per training, 2026 per validazione. Valuta ogni dieci epoche, includendo l'epoca zero, e salva il checkpoint con la minore perdita tra le epoche valutate in `outputs/event_order_best.pt`. Una nuova esecuzione può sovrascrivere questo file.
+
+- `inspect_event_memory.py` analizza gli stati delle coppie prima e dopo C e alla fine, raggruppando le distanze per attesa; riporta anche margini e classificazioni sui dati di validazione.
+- `inspect_decision_threshold.py` sceglie la soglia esclusivamente sul training e confronta training e validazione, senza modificare il checkpoint.
+- `test_event_order.py` sceglie la soglia sul training prima di generare il test: 1000 coppie con seme 314159. Confronta soglia zero e soglia scelta, riporta risultati per attesa e salva `protocol.json` e `results.json` in una nuova cartella `outputs/event_order_test_<timestamp>/`. Il protocollo comprende hash SHA-256 del checkpoint, configurazione e versione PyTorch.
+
+La decisione binaria usa il margine `logit_0 - logit_1`: sotto la soglia assegna classe 1, altrimenti classe 0. La soglia scelta dagli script non viene applicata automaticamente al modello o allo stream. I comandi descrivono gli esperimenti disponibili; qui non sono riportati risultati di accuratezza verificati.
+
+### Esperimento con rumore configurabile
+
+```bash
+python train_event_order_noise.py
+python compare_noise_models.py --noisy-checkpoint outputs/event_order_noise_<timestamp>/best.pt
+```
+
+`train_event_order_noise.py` usa attualmente `training_noise_std = 0.0` e `validation_noise_std = 0.01`: il training è pulito, mentre la validazione comprende sia dati puliti sia una copia con rumore gaussiano fisso (seme 808). Restano 1000 epoche, valutazione ogni dieci epoche inclusa l'epoca zero, Adam con learning rate `0.01`, batch di 64, `dt = 0.1`, 8 neuroni nascosti e 6 sottopassi. I dataset contengono 128 coppie ciascuno, con semi 123/2026; il seme del modello è 42 e quello del rumore di training è 707.
+
+Il criterio di selezione resta la media delle perdite di validazione pulita e rumorosa. Ogni esecuzione crea `outputs/event_order_noise_<timestamp>/` con `metrics.csv` e `best.pt`; il checkpoint registra entrambi i valori effettivi in `training_noise_std` e `validation_noise_std`, oltre ai semi e alle metriche. La modifica vale per le nuove esecuzioni e non altera i checkpoint degli esperimenti conclusi.
+
+`compare_noise_models.py` confronta il checkpoint indicato con `outputs/event_order_best.pt` sulla validazione (seme 2026), scegliendo separatamente le soglie sul training pulito. Usa livelli di rumore `0.0`, `0.001`, `0.005`, `0.01`, `0.02`, `0.05` e semi 101/202/303, condivisi tra i modelli; salva risultati e hash in `outputs/noise_comparison_<timestamp>/results.json`. Sostituire `<timestamp>` con la cartella dell'esperimento. Il parametro `--noisy-checkpoint` accetta anche il nuovo esperimento con training pulito; questo confronto usa la validazione, non il test finale.
+
+## Inferenza streaming
+
+`LTCStream(model, dt=...)` conserva lo stato di un singolo flusso e imposta il modello in modalità valutazione:
+
+| Metodo | Ingresso / comportamento |
+| --- | --- |
+| `push(sample)` | Un campione `[input_size]` |
+| `push_block(samples)` | Un blocco non vuoto `[istanti, input_size]` |
+| `reset()` | Elimina lo stato per iniziare un flusso indipendente |
+
+Entrambi i metodi di inserimento restituiscono logits `[1, num_classes]` dopo l'ultimo campione ricevuto, senza registrare gradienti. Gli ingressi vengono convertiti al dispositivo e al tipo numerico del modello. Lo stream non applica soglie né restituisce probabilità: mantiene la continuità dello stato tra chiamate, fino al reset.
+
+### Esportazione, decisione e misure
+
+```bash
+python prepare_inference.py
+python check_stream_decision.py
+python benchmark_stream.py
+python inspect_noise_robustness.py
+```
+
+`prepare_inference.py` carica `outputs/event_order_best.pt`, sceglie la soglia sul training ed esporta `outputs/event_order_inference.pt` con pesi, configurazione, soglia e hash del checkpoint sorgente. Rifiuta di sovrascrivere un'esportazione esistente. Gli altri tre comandi richiedono questo file.
+
+`inference/loading.py` carica il bundle; `inference/decision.py` applica la soglia ai logits binari. `check_stream_decision.py` controlla equivalenza delle decisioni tra sequenza intera e streaming e correttezza sulle quattro sequenze generate. `benchmark_stream.py` misura la latenza per campione inclusa la decisione, su CPU e su CUDA se disponibile, riportando mediana, 95° percentile e massimo.
+
+`inspect_noise_robustness.py` valuta su CPU il bundle con la soglia salvata, sui dati di validazione e sui livelli di rumore e semi descritti sopra. Salva il report in `outputs/noise_validation_<timestamp>/results.json`. Questi comandi documentano gli strumenti disponibili; non attestano risultati verificati.
 
 ## Visualizzazioni
 
@@ -179,16 +259,30 @@ Il secondo viewer usa una cella non addestrata su CPU e mostra ingresso, stati d
 | `ltc/cell.py` | Cella LTC e stato iniziale coerente con dispositivo e tipo numerico |
 | `ltc/sequence.py` | Elaborazione delle sequenze e raccolta degli stati |
 | `data/temporal_order.py` | Generazione riproducibile di coppie di impulsi |
+| `data/event_order.py` | Coppie A-B-C/B-A-C con tempi variabili |
+| `data/noise.py` | Rumore gaussiano con generatore CPU esplicito |
+| `data/memory_grid.py` | Griglia di ampiezze e attese per l'analisi della memoria |
 | `models/sequence_classifier.py` | Classificatore basato sullo stato finale |
+| `training/step.py`, `training/epoch.py` | Aggiornamento dei pesi e training per mini-batch |
+| `training/evaluation.py` | Perdita, accuratezza e matrice di confusione binaria |
+| `training/decision.py` | Raccolta dei margini e selezione della soglia |
+| `inference/stream.py` | Inferenza con stato persistente tra campioni o blocchi |
+| `inference/loading.py`, `inference/decision.py` | Caricamento del bundle e decisione con soglia |
+| `prepare_inference.py`, `benchmark_stream.py` | Esportazione del bundle e misura della latenza |
+| `compare_noise_models.py` | Confronto dei checkpoint su validazione con rumore condiviso |
 | `visualization/synapse_curve.py` | Campionamento della curva sinaptica |
 | `visualization/synapse_viewer.py` | Grafico interattivo con slider |
 | `visualization/state_viewer.py` | Risposta dello stato a un impulso e confronto con ingresso nullo |
+| `visualization/memory_grid_viewer.py` | Visualizzazione della memoria del modello addestrato sui due impulsi |
+| `train_*.py`, `evaluate_temporal_order.py`, `inspect_*.py`, `test_event_order.py` | Esperimenti, valutazione e analisi dei checkpoint |
 | `check_*.py` | Script di controllo |
 | `.gitignore` | Esclusione di ambienti virtuali, cache e file locali |
 
 ## Limiti attuali
 
 - `advance_state` valida durata, sottopassi e compatibilità dei tensori e dei parametri. `semi_implicit_step` valida la durata; chi lo chiama direttamente deve fornire tensori compatibili.
-- Non sono ancora disponibili un ciclo di ottimizzazione, risultati di accuratezza o una valutazione su dati separati.
-- `run_sequence` usa una durata scalare comune ai passi e raccoglie sempre tutta la storia, anche quando il classificatore utilizza solo lo stato finale.
+- Gli esperimenti usano dati sintetici; non dimostrano da soli generalizzazione a dati reali o a tempi fuori dalla distribuzione di training.
+- Il test separato usa un seme fisso: riutilizzarlo per scegliere modifiche al modello ne comprometterebbe il ruolo di valutazione finale.
+- `run_sequence` usa una durata scalare comune ai passi; `LTCStream` gestisce un solo flusso per istanza, con `dt` fissato alla creazione.
+- Valutazione e scelta della soglia attuali sono pensate per due classi.
 - Le dipendenze non sono ancora fissate integralmente per riprodurre l'ambiente.

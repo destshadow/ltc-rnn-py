@@ -3,10 +3,14 @@ import matplotlib.pyplot as plt
 
 def create_panels(sequence, hidden_size, dt):
     figure, axes = plt.subplots(
-        3, 1, figsize=(11, 8), sharex=True,
+        3, 1,
+        figsize=(15, 8),
+        sharex=True,
         constrained_layout=True,
     )
-    figure.get_layout_engine().set(rect=(0, 0.12, 1, 0.88))
+    figure.get_layout_engine().set(
+        rect=(0, 0.12, 0.67, 0.82)
+    )
 
     duration = sequence.shape[0] * dt
 

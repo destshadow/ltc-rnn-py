@@ -2,23 +2,28 @@ from matplotlib.widgets import Button
 
 
 class PlaybackControls:
-    """Controlla l'avanzamento di un'animazione a fotogrammi."""
+    """Gestisce il tempo di riproduzione e i pulsanti."""
 
-    def __init__(self, figure, animation, initialize, update, frame_count):
-        self.animation = animation
-        self.initialize = initialize
-        self.update = update
-        self.frame_count = frame_count
+    def __init__(
+        self,
+        figure,
+        session,
+        on_snapshot,
+        on_reset,
+        interval_ms=100,
+    ):
+        self.figure = figure
+        self.session = session
+        self.on_snapshot = on_snapshot
+        self.on_reset = on_reset
+        self.running = False
 
-        self.paused = False
-        self.finished = False
-        self.next_index = 0
+        self.timer = figure.canvas.new_timer(interval=interval_ms)
+        self.timer.add_callback(self._tick)
 
-        # Coordinate relative alla finestra: sinistra, basso,
-        # larghezza e altezza.
         self.pause_button = Button(
             figure.add_axes([0.20, 0.02, 0.18, 0.045]),
-            "Pausa",
+            "Riprendi",
         )
         self.step_button = Button(
             figure.add_axes([0.41, 0.02, 0.18, 0.045]),
@@ -32,57 +37,59 @@ class PlaybackControls:
         self.pause_button.on_clicked(self.toggle_pause)
         self.step_button.on_clicked(self.step)
         self.restart_button.on_clicked(self.restart)
+        figure.canvas.mpl_connect("close_event", self._close)
 
-    def mark_frame(self, index):
-        """Registra il campione appena elaborato."""
-        self.next_index = index + 1
-        self.finished = self.next_index >= self.frame_count
-
-        if self.finished:
-            self.animation.pause()
-            self.paused = True
-            self.pause_button.label.set_text("Terminata")
-
-    def toggle_pause(self, event):
-        if self.finished:
+    def start(self):
+        if self.session.finished:
             return
 
-        self.paused = not self.paused
+        self.running = True
+        self.pause_button.label.set_text("Pausa")
+        self.timer.start()
+        self.figure.canvas.draw_idle()
+
+    def pause(self):
+        self.running = False
+        self.timer.stop()
         self.pause_button.label.set_text(
-            "Riprendi" if self.paused else "Pausa"
+            "Terminata" if self.session.finished else "Riprendi"
         )
 
-        if self.paused:
-            self.animation.pause()
-        else:
-            self.animation.resume()
-
-        event.canvas.draw_idle()
-
-    def step(self, event):
-        if self.finished:
+    def _advance(self):
+        if self.session.finished:
+            self.pause()
             return
 
-        self.animation.pause()
-        self.paused = True
-        self.pause_button.label.set_text("Riprendi")
+        snapshot = self.session.advance()
+        self.on_snapshot(snapshot)
 
-        # Consumiamo lo stesso iteratore usato dall'animazione:
-        # alla ripresa non verrà ripetuto il campione.
-        index = next(self.animation.frame_seq, None)
-        if index is not None:
-            self.update(index)
+        if self.session.finished:
+            self.pause()
 
-        event.canvas.draw_idle()
+        self.figure.canvas.draw_idle()
+
+    def _tick(self):
+        if self.running:
+            self._advance()
+
+    def toggle_pause(self, event):
+        if self.running:
+            self.pause()
+        else:
+            self.start()
+
+        self.figure.canvas.draw_idle()
+
+    def step(self, event):
+        self.pause()
+        self._advance()
 
     def restart(self, event):
-        self.animation.pause()
-        self.initialize()
-
-        self.next_index = 0
-        self.finished = False
-        self.paused = True
+        self.pause()
+        self.session.reset()
+        self.on_reset()
         self.pause_button.label.set_text("Riprendi")
+        self.figure.canvas.draw_idle()
 
-        self.animation.frame_seq = self.animation.new_frame_seq()
-        event.canvas.draw_idle()
+    def _close(self, event):
+        self.pause()

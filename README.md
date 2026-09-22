@@ -58,7 +58,7 @@ python visualize_stream.py --class-id 0 --seed 2026 --noise 0.05 --noise-seed 11
 
 Il percorso predefinito è `outputs/event_order_inference_1000ep.pt`; `--bundle <percorso>` lo sostituisce. `--seed` controlla la sequenza, `--noise` la deviazione standard del rumore e `--noise-seed` la sua realizzazione. Servono Matplotlib e un backend grafico interattivo.
 
-**Pausa** ferma la riproduzione; **Un passo** mette in pausa e avanza di un campione; **Riprendi** continua dal successivo. **Ricomincia** svuota i grafici, azzera anche la memoria LTC tramite `initialize()` e `stream.reset()` e resta in pausa. I callback sono stati verificati con una LTC su CPU e timer controllato su backend Agg, incluso il riavvio a sequenza conclusa; questa verifica non sostituisce una prova dei clic sul backend GUI.
+**Pausa** ferma la riproduzione; **Un passo** mette in pausa e avanza di un campione; **Riprendi** continua dal successivo. **Ricomincia** svuota i grafici, azzera anche la memoria LTC tramite `session.reset()` e `stream.reset()` e resta in pausa. La precedente versione dei callback basata su `FuncAnimation` era stata verificata con una LTC su CPU e timer controllato su backend Agg. Tale verifica non copre il nuovo playback basato su `SequenceSession` né i clic sul backend GUI.
 
 Per esportare nuovamente il riferimento, solo se il file di destinazione non esiste:
 
@@ -66,11 +66,15 @@ Per esportare nuovamente il riferimento, solo se il file di destinazione non esi
 python prepare_inference.py --checkpoint outputs/event_order_noise_20260921T150040_212480Z/best.pt --output outputs/event_order_inference_1000ep.pt
 ```
 
-### Prossima tappa: sequenze da file
+### Organizzazione e prossime tappe
 
-La prossima tappa, ancora da implementare, è separare la provenienza dei dati dalla rete e collegare la demo a sequenze lette da un file. Si partirà da un piccolo file con gli stessi canali A, B e C, confrontando i campioni caricati e le uscite della rete con quelli del generatore, a parità di sequenza, `dt` e stato iniziale.
+`SequenceSession` separa ora l'avanzamento della rete dalla grafica: `advance()` elabora un campione, `current()` restituisce una copia del risultato senza avanzare e `reset()` azzera sessione e memoria LTC. Il timer di `PlaybackControls` gestisce la riproduzione; grafici, neuroni e connessioni ricevono lo stesso snapshot.
 
-Questa separazione preparerà l'acquisizione da sensori. Per riconoscere fenomeni reali serviranno dati rappresentativi, etichette appropriate e un nuovo addestramento con valutazione separata.
+Le prossime attività sono uniformare `--bundle` negli strumenti, registrare le dipendenze e completare l'osservazione della rete. Il percorso verso il controllo prevede poi simulatore verticale, controller classico di riferimento e nuovo controller LTC a uscita continua, valutato tramite algoritmo genetico. I comandi LTC andranno al simulatore; il genetico riceverà il punteggio della prova. Il classificatore A-B-C resta un esempio separato.
+
+CSV e confronto file–generatore sono opzionali, da introdurre per registrare o riprodurre dati esterni; per A-B-C andrà verificata anche la corrispondenza del `dt` con il modello. Il simulatore potrà produrre direttamente le osservazioni. Per fenomeni reali serviranno dati, etichette e nuovo addestramento appropriati.
+
+La struttura futura prevista distingue componenti autonomi `LTC/`, `GA/`, `WEB/` e `PROXY/`, quando necessari. Questo repository contiene attualmente il componente LTC e le sue visualizzazioni; le cartelle attuali non sono state trasferite né sono stati aggiunti gli altri componenti.
 
 ## Riattivare l'ambiente virtuale
 
@@ -319,6 +323,25 @@ Sostituire `<timestamp>` con la cartella reale. Il suffisso `1000ep` è un nome 
 
 ## Visualizzazioni
 
+### Neuroni e connessioni ricorrenti
+
+```bash
+python visualize_stream.py --connections strength
+python visualize_stream.py --connections conductance --class-id 1 --seed 2026
+```
+
+`--connections` accetta `strength` (predefinito) e `conductance`. Il colore dei neuroni indica lo stato interno, su scala fissa; facendo clic su un neurone si selezionano le connessioni ricorrenti entranti. L'autoconnessione è riportata numericamente, senza freccia.
+
+- `strength`: spessore proporzionale all'intensità appresa, costante durante la riproduzione.
+- `conductance`: spessore aggiornato dalle conduttanze calcolate sullo stato dello snapshot visualizzato, senza avanzare la LTC. Non rappresenta la storia delle conduttanze nei sottopassi del solver.
+
+Le modalità condividono la scala basata sulla massima `strength`. Le frecce sono neutre: una conduttanza positiva non implica un aumento dello stato del neurone; l'effetto dipende anche dal potenziale di inversione e dallo stato della destinazione. Questa vista mostra le connessioni ricorrenti, non ancora quelle sensoriali o il dettaglio completo di una singola sinapsi.
+
+**Ricomincia** azzera grafici, colori dei neuroni e valori delle connessioni riferiti allo stato nullo, mantenendo il neurone selezionato. In modalità conduttanza, stato nullo non significa necessariamente conduttanza nulla.
+
+`check_session.py --bundle <percorso>` controlla lettura senza avanzamento, indipendenza degli snapshot, equivalenza con la sequenza intera, fine sequenza e reset. Lo script è disponibile ma non è stato eseguito in questo aggiornamento.
+
+
 ```bash
 python visualize_stream.py --bundle outputs/event_order_inference_1000ep.pt --class-id 0
 python visualize_stream.py --bundle outputs/event_order_inference_1000ep.pt --class-id 1
@@ -362,6 +385,8 @@ Il secondo viewer usa una cella non addestrata su CPU e mostra ingresso, stati d
 | `training/step.py`, `training/epoch.py` | Aggiornamento dei pesi e training per mini-batch |
 | `training/evaluation.py` | Perdita, accuratezza e matrice di confusione binaria |
 | `training/decision.py` | Raccolta dei margini e selezione della soglia |
+| `inference/session.py` | Avanzamento della sequenza e snapshot indipendenti dalla grafica |
+| `inference/connection_inspection.py` | Calcolo delle conduttanze ricorrenti sullo stato osservato |
 | `inference/stream.py` | Inferenza con stato persistente tra campioni o blocchi |
 | `inference/loading.py`, `inference/decision.py` | Caricamento del bundle e decisione con soglia |
 | `prepare_inference.py`, `benchmark_stream.py` | Esportazione del bundle e misura della latenza |
@@ -373,7 +398,9 @@ Il secondo viewer usa una cella non addestrata su CPU e mostra ingresso, stati d
 | `train_*.py`, `evaluate_temporal_order.py`, `inspect_*.py`, `test_event_order.py` | Esperimenti, valutazione e analisi dei checkpoint |
 | `visualize_stream.py` | Caricamento del bundle, preparazione dei dati e animazione streaming |
 | `visualization/stream_plot.py` | Creazione dei pannelli e spazio per i controlli |
-| `visualization/playback.py` | Pausa, avanzamento singolo e riavvio |
+| `visualization/playback.py` | Timer, pausa, avanzamento della sessione e riavvio |
+| `visualization/neuron_view.py` | Stato dei neuroni tramite colori e valori |
+| `visualization/neuron_connections.py` | Selezione del neurone e connessioni ricorrenti per strength o conduttanza |
 | `check_*.py` | Script di controllo |
 | `.gitignore` | Esclusione di ambienti virtuali, cache e file locali |
 

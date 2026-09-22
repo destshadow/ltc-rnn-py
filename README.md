@@ -70,11 +70,50 @@ python prepare_inference.py --checkpoint outputs/event_order_noise_20260921T1500
 
 `SequenceSession` separa ora l'avanzamento della rete dalla grafica: `advance()` elabora un campione, `current()` restituisce una copia del risultato senza avanzare e `reset()` azzera sessione e memoria LTC. Il timer di `PlaybackControls` gestisce la riproduzione; grafici, neuroni e connessioni ricevono lo stesso snapshot.
 
-Le prossime attività sono uniformare `--bundle` negli strumenti, registrare le dipendenze e completare l'osservazione della rete. Il percorso verso il controllo prevede poi simulatore verticale, controller classico di riferimento e nuovo controller LTC a uscita continua, valutato tramite algoritmo genetico. I comandi LTC andranno al simulatore; il genetico riceverà il punteggio della prova. Il classificatore A-B-C resta un esempio separato.
+Le prossime attività sono uniformare `--bundle` negli strumenti, registrare le dipendenze e completare l'osservazione della rete. Il controller LTC a uscita continua, il suo stream e il salvataggio/caricamento sono ora presenti. Il prossimo passo è il simulatore verticale verificato con spinta costante, seguito da controller classico di riferimento e valutazione evolutiva del controller LTC. I comandi LTC andranno al simulatore; il genetico riceverà il punteggio della prova. Il classificatore A-B-C resta un esempio separato.
 
 CSV e confronto file–generatore sono opzionali, da introdurre per registrare o riprodurre dati esterni; per A-B-C andrà verificata anche la corrispondenza del `dt` con il modello. Il simulatore potrà produrre direttamente le osservazioni. Per fenomeni reali serviranno dati, etichette e nuovo addestramento appropriati.
 
-La struttura futura prevista distingue componenti autonomi `LTC/`, `GA/`, `WEB/` e `PROXY/`, quando necessari. Questo repository contiene attualmente il componente LTC e le sue visualizzazioni; le cartelle attuali non sono state trasferite né sono stati aggiunti gli altri componenti.
+La struttura futura prevista distingue componenti autonomi `LTC/`, `SIM/`, `PROXY/`, `GA/` ed eventualmente `WEB/`, quando necessari. Questo repository contiene attualmente il componente LTC e le sue visualizzazioni; le cartelle attuali non sono state trasferite né sono stati aggiunti gli altri componenti.
+
+## Controllore continuo e contratto con il primo simulatore
+
+`ContinuousController` affianca il classificatore A-B-C senza sostituirlo. Usa la cella LTC e un'uscita lineare seguita da sigmoid per produrre comandi tra 0 e 1. Riceve ingressi e stato espliciti e restituisce comandi e nuovo stato, mantenendo il percorso dei gradienti.
+
+`ControllerStream` gestisce un singolo episodio in inferenza: `push(sample)` riceve un vettore `[input_size]` e restituisce `[output_size]`, `state_snapshot()` copia lo stato e `reset()` elimina la memoria. Il primo campione dopo reset parte dallo stato iniziale nullo. Il campione viene convertito al dispositivo e tipo del modello; valori non finiti sono rifiutati. Il `dt` dello stream è fisso per l'episodio.
+
+`save_controller(path, model, dt=...)` salva parametri su CPU, configurazione, dimensione e attivazione dell'uscita, tipo numerico e `dt`, senza sovrascrivere un file esistente. `load_controller(path, device=...)` restituisce modello in modalità valutazione e metadati, supportando `float32` e `float64`. La memoria dell'episodio non è salvata. Le scale degli ingressi e la conversione in spinta fisica non sono ancora incluse nel formato.
+
+```bash
+python check_controller.py
+python check_controller_stream.py
+python check_controller_loading.py
+```
+
+I controlli coprono forme, limiti dei comandi, gradienti, ripartenza, equivalenza dello streaming e salvataggio/caricamento. L'utente ha confermato che il controllore ricaricato riproduce comandi e stato finale; gli script non sono stati rieseguiti durante questo aggiornamento documentale. I tre ingressi usati nei controlli sono esempi sintetici, non osservazioni del drone. La visualizzazione attuale resta dedicata alle sequenze A-B-C; non è ancora una demo del controllo verticale.
+
+### Interfaccia concordata per il moto verticale
+
+| Dato | Contratto |
+| --- | --- |
+| Ingresso 0 | `(quota_desiderata - quota_attuale) / scala_quota` |
+| Ingresso 1 | `velocità_verticale / scala_velocità` |
+| Uscita 0 | Comando di spinta `u` tra 0 e 1 |
+| `dt` | Tempo simulato fra due aggiornamenti, condiviso fra LTC e SIM; fisso con lo stream attuale |
+| Reset | Memoria LTC azzerata all'inizio di ogni episodio, insieme all'inizializzazione dello stato fisico |
+
+Il controller per questo compito avrà `input_size=2` e `output_size=1`. Le scale positive di normalizzazione, le unità e convenzioni fisiche, la spinta massima e la conversione da `u` a spinta saranno definite con il simulatore: non assumere che `u=0.5` significhi mantenimento della quota. Non riutilizzare il checkpoint classificatore A-B-C come controller di volo.
+
+| Componente autonomo previsto | Responsabilità |
+| --- | --- |
+| `LTC` | Riceve osservazioni numeriche e produce comandi, conservando la memoria |
+| `SIM` | Aggiorna quota e velocità applicando la spinta e la fisica definita |
+| `PROXY` | Normalizza e ordina gli ingressi, collega controller e simulatore e raccoglie i risultati |
+| `GA` | Propone parametri e usa il punteggio degli episodi per selezionare candidati |
+
+Il ciclo sarà osservazione → comando LTC → aggiornamento SIM → nuova osservazione; il valutatore ricaverà il punteggio dell'episodio per GA. L'uscita LTC va al simulatore, non direttamente al genetico.
+
+**Prossimo passo: costruire in `SIM` il moto verticale e verificarlo con spinta costante**, prima dell'apprendimento. La verifica dovrà confrontare quota e velocità con il comportamento atteso dalla fisica scelta. Seguirà un controller classico di riferimento. Massa, gravità, integrazione, eventuale resistenza, contatto col suolo e condizioni di fine episodio restano da definire; nessun simulatore è stato aggiunto in questo aggiornamento.
 
 ## Riattivare l'ambiente virtuale
 
@@ -381,6 +420,9 @@ Il secondo viewer usa una cella non addestrata su CPU e mostra ingresso, stati d
 | `data/event_order.py` | Coppie A-B-C/B-A-C con tempi variabili |
 | `data/noise.py` | Rumore gaussiano con generatore CPU esplicito |
 | `data/memory_grid.py` | Griglia di ampiezze e attese per l'analisi della memoria |
+| `models/continuous_controller.py` | Controller LTC con stato esplicito e comandi continui limitati |
+| `inference/controller_stream.py` | Memoria del controller per singolo episodio |
+| `inference/controller_loading.py` | Salvataggio e caricamento del controller, senza memoria episodica |
 | `models/sequence_classifier.py` | Classificatore basato sullo stato finale |
 | `training/step.py`, `training/epoch.py` | Aggiornamento dei pesi e training per mini-batch |
 | `training/evaluation.py` | Perdita, accuratezza e matrice di confusione binaria |

@@ -115,17 +115,6 @@ Il ciclo sarà osservazione → comando LTC → aggiornamento SIM → nuova osse
 
 **Prossimo passo: costruire in `SIM` il moto verticale e verificarlo con spinta costante**, prima dell'apprendimento. La verifica dovrà confrontare quota e velocità con il comportamento atteso dalla fisica scelta. Seguirà un controller classico di riferimento. Massa, gravità, integrazione, eventuale resistenza, contatto col suolo e condizioni di fine episodio restano da definire; nessun simulatore è stato aggiunto in questo aggiornamento.
 
-## Riattivare l'ambiente virtuale
-
-A ogni nuovo terminale Bash/WSL, dalla cartella del progetto:
-
-```bash
-cd "/mnt/c/Users/amara/Desktop/LTC RNN py"
-source .venv/bin/activate
-```
-
-Se sei già nella cartella, basta `source .venv/bin/activate`. Non serve ricreare l'ambiente né reinstallare le dipendenze. Il prompt normalmente mostra `(.venv)`; `which python` deve indicare l'interprete dentro `.venv/bin/`. Per uscire: `deactivate`. Questi comandi si riferiscono all'ambiente Linux/WSL del progetto.
-
 ## Dinamica e forme dei tensori
 
 Ogni neurone ha capacità, conduttanza di perdita e potenziale di riposo. Ogni collegamento ha intensità, pendenza, soglia e potenziale di inversione. Capacità, conduttanza di perdita, intensità e pendenza sono ottenute tramite `softplus` con un piccolo termine positivo.

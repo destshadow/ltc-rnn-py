@@ -1,3 +1,4 @@
+import argparse
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,8 +18,12 @@ def count_correct(model, inputs, labels, *, dt, threshold):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--bundle", default="outputs/event_order_inference.pt")
+    args = parser.parse_args()
+
     model, bundle = load_inference_model(
-        "outputs/event_order_inference.pt",
+        args.bundle,
         device="cpu",
     )
 

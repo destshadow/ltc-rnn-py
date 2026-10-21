@@ -1,3 +1,4 @@
+import argparse
 import math
 from statistics import median
 from time import perf_counter
@@ -24,11 +25,11 @@ def process_sample(stream, sample, threshold):
     ).item()
 
 
-def benchmark(device_name):
+def benchmark(device_name, bundle_path):
     device = torch.device(device_name)
 
     model, bundle = load_inference_model(
-        "outputs/event_order_inference.pt",
+        bundle_path,
         device=device,
     )
 
@@ -77,13 +78,17 @@ def benchmark(device_name):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--bundle", default="outputs/event_order_inference.pt")
+    args = parser.parse_args()
+
     print("Latenza per un campione, inclusa la decisione.")
     print("Esclusi caricamento del modello e acquisizione del sensore.")
 
-    benchmark("cpu")
+    benchmark("cpu", args.bundle)
 
     if torch.cuda.is_available():
-        benchmark("cuda")
+        benchmark("cuda", args.bundle)
     else:
         print("\nGPU non disponibile: confronto saltato.")
 

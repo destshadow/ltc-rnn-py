@@ -1,3 +1,5 @@
+import argparse
+
 import torch
 
 from data.temporal_order import make_temporal_order
@@ -20,12 +22,16 @@ def print_results(name, results):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--checkpoint", default="outputs/tiny_checkpoint.pt")
+    args = parser.parse_args()
+
     device = torch.device(
         "cuda" if torch.cuda.is_available() else "cpu"
     )
 
     checkpoint = torch.load(
-        "outputs/tiny_checkpoint.pt",
+        args.checkpoint,
         map_location="cpu",
         weights_only=True,
     )

@@ -77,6 +77,9 @@ def evaluate_model(path, inputs, labels, noises, levels):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--noisy-checkpoint", required=True)
+    parser.add_argument(
+        "--original-checkpoint", default="outputs/event_order_best.pt",
+    )
     args = parser.parse_args()
 
     inputs, labels = make_event_order(pairs=128, seed=2026)
@@ -95,7 +98,7 @@ def main():
 
     print("Valutazione modello originale...", flush=True)
     original = evaluate_model(
-        "outputs/event_order_best.pt",
+        args.original_checkpoint,
         inputs, labels, noises, levels,
     )
 

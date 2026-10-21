@@ -1,3 +1,5 @@
+import argparse
+
 import torch
 
 from data.event_order import make_event_order
@@ -15,12 +17,16 @@ def report(name, margins, labels, threshold):
     )
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--checkpoint", default="outputs/event_order_best.pt")
+    args = parser.parse_args()
+
     device = torch.device(
         "cuda" if torch.cuda.is_available() else "cpu"
     )
 
     checkpoint = torch.load(
-        "outputs/event_order_best.pt",
+        args.checkpoint,
         map_location="cpu",
         weights_only=True,
     )

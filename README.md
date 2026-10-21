@@ -4,6 +4,10 @@ Progetto sperimentale in Python e PyTorch per costruire una rete ricorrente con 
 
 Il progetto comprende una cella LTC, un solver semi-implicito, un classificatore di sequenze e inferenza streaming con stato persistente. Sono disponibili dati sintetici sull'ordine temporale, addestramento, selezione del checkpoint su validazione, test separato e analisi della memoria e della soglia decisionale. Checkpoint e risultati restano locali nella cartella `outputs/`, esclusa da Git.
 
+Installazione per sviluppo e suite automatica: [guida di sviluppo](docs/development.md).
+`pyproject.toml` dichiara dipendenze e Python >= 3.10; `python -m pytest` raccoglie
+i controlli portabili e quelli CUDA opzionali, senza richiedere checkpoint locali.
+
 ## Prima tappa completata — 2026-09-21
 
 La prima tappa comprende LTC modulare, addestramento, valutazione separata, esportazione per inferenza, streaming con memoria persistente e visualizzazione interattiva.
@@ -157,7 +161,7 @@ La configurazione locale usa un ambiente virtuale `.venv` e le seguenti librerie
 | NumPy | Versione non fissata |
 | Matplotlib | Versione non fissata |
 
-La GPU rilevata nell'ambiente locale tramite `nvidia-smi` è una **NVIDIA GeForce RTX 3060 con 12 GB di VRAM**. L'accesso alla GPU da PyTorch non è ancora stato verificato.
+La GPU rilevata nell'ambiente locale tramite `nvidia-smi` è una **NVIDIA GeForce RTX 3060 con 12 GB di VRAM**. Il 2026-10-21 `torch.cuda.is_available()` ha restituito `True` nel `.venv` locale e `check_cell.py` ha completato il confronto CPU/GPU.
 
 ## Preparazione dell'ambiente
 
@@ -185,7 +189,7 @@ python -m pip install torch==2.13.0 --index-url https://download.pytorch.org/whl
 python -m pip install numpy matplotlib
 ```
 
-Questi sono i comandi di installazione comunicati dall'autore; l'installazione non è stata ripetuta per verificarne la riproducibilità. Non è ancora presente un file che fissi tutte le versioni delle dipendenze.
+Questi sono i comandi di installazione comunicati dall'autore; l'installazione non è stata ripetuta per verificarne la riproducibilità. Ora `pyproject.toml` dichiara i requisiti e l'extra `dev`; manca ancora un lockfile completo. Le versioni locali osservate e i comandi della suite sono nella [guida di sviluppo](docs/development.md).
 
 ### 4. Controllare interprete e GPU
 
@@ -281,7 +285,7 @@ python inspect_temporal_errors.py
 python -m visualization.memory_grid_viewer
 ```
 
-Il training salva `outputs/tiny_checkpoint.pt`. Gli altri comandi caricano quel file per valutare il modello, analizzare gli errori e visualizzare l'effetto di ampiezza e attesa sulla memoria. Il viewer richiede un backend grafico interattivo.
+Il training salva `outputs/tiny_checkpoint.pt`. Gli altri comandi caricano quel file, sostituibile con `--checkpoint <percorso>`, per valutare il modello, analizzare gli errori e visualizzare l'effetto di ampiezza e attesa sulla memoria. Il viewer richiede un backend grafico interattivo.
 
 ### Esperimento A-B-C/B-A-C
 
@@ -296,6 +300,7 @@ Il training usa mini-batch, Adam, clipping dei gradienti e insiemi generati con 
 
 - `inspect_event_memory.py` analizza gli stati delle coppie prima e dopo C e alla fine, raggruppando le distanze per attesa; riporta anche margini e classificazioni sui dati di validazione.
 - `inspect_decision_threshold.py` sceglie la soglia esclusivamente sul training e confronta training e validazione, senza modificare il checkpoint.
+- Entrambi gli script `inspect_*` caricano `outputs/event_order_best.pt` se non si indica `--checkpoint <percorso>`.
 - `test_event_order.py --checkpoint <percorso>` usa la CPU e sceglie la soglia sul training pulito prima di generare il test: 1000 coppie con seme 271828, distinto dai semi di training e validazione. Confronta soglia zero e soglia scelta su dati puliti e con rumore a livelli `0.001`, `0.005`, `0.01`, `0.02`, `0.05`, con semi 1101/2202/3303. Riporta risultati per attesa e salva il protocollo prima della valutazione e i risultati progressivamente in `outputs/event_order_test_<timestamp>/`. Il protocollo comprende hash SHA-256, epoca del checkpoint, configurazione, dispositivo e versione PyTorch.
 
 La decisione binaria usa il margine `logit_0 - logit_1`: sotto la soglia assegna classe 1, altrimenti classe 0. La soglia scelta dagli script non viene applicata automaticamente al modello o allo stream. I risultati salvati del checkpoint di riferimento sono riportati nella sezione sulla prima tappa.
@@ -311,7 +316,7 @@ python compare_noise_models.py --noisy-checkpoint outputs/event_order_noise_<tim
 
 Il criterio di selezione resta la media delle perdite di validazione pulita e rumorosa. Ogni esecuzione crea `outputs/event_order_noise_<timestamp>/` con `metrics.csv` e `best.pt`; il checkpoint registra entrambi i valori effettivi in `training_noise_std` e `validation_noise_std`, oltre ai semi e alle metriche. La modifica vale per le nuove esecuzioni e non altera i checkpoint degli esperimenti conclusi.
 
-`compare_noise_models.py` confronta il checkpoint indicato con `outputs/event_order_best.pt` sulla validazione (seme 2026), scegliendo separatamente le soglie sul training pulito. Usa livelli di rumore `0.0`, `0.001`, `0.005`, `0.01`, `0.02`, `0.05` e semi 101/202/303, condivisi tra i modelli; salva risultati e hash in `outputs/noise_comparison_<timestamp>/results.json`. Sostituire `<timestamp>` con la cartella dell'esperimento. Il parametro `--noisy-checkpoint` accetta anche il nuovo esperimento con training pulito; questo confronto usa la validazione, non il test finale.
+`compare_noise_models.py` confronta il checkpoint indicato con `outputs/event_order_best.pt` (sostituibile con `--original-checkpoint <percorso>`) sulla validazione (seme 2026), scegliendo separatamente le soglie sul training pulito. Usa livelli di rumore `0.0`, `0.001`, `0.005`, `0.01`, `0.02`, `0.05` e semi 101/202/303, condivisi tra i modelli; salva risultati e hash in `outputs/noise_comparison_<timestamp>/results.json`. Sostituire `<timestamp>` con la cartella dell'esperimento. Il parametro `--noisy-checkpoint` accetta anche il nuovo esperimento con training pulito; questo confronto usa la validazione, non il test finale.
 
 ## Inferenza streaming
 
@@ -334,7 +339,7 @@ python benchmark_stream.py
 python inspect_noise_robustness.py
 ```
 
-`prepare_inference.py` richiede `--checkpoint` e `--output`, controlla che il modello abbia due classi e sceglie la soglia sul training in modalità valutazione su CPU. Esporta pesi, configurazione, soglia, percorso e hash del checkpoint, epoca sorgente, dispositivo della soglia e versione PyTorch. Crea le cartelle necessarie e salva con apertura esclusiva (`xb`), senza sovrascrivere file esistenti. I due comandi successivi richiedono `outputs/event_order_inference.pt`.
+`prepare_inference.py` richiede `--checkpoint` e `--output`, controlla che il modello abbia due classi e sceglie la soglia sul training in modalità valutazione su CPU. Esporta pesi, configurazione, soglia, percorso e hash del checkpoint, epoca sorgente, dispositivo della soglia e versione PyTorch. Crea le cartelle necessarie e salva con apertura esclusiva (`xb`), senza sovrascrivere file esistenti. I due comandi successivi usano `outputs/event_order_inference.pt`, sostituibile con `--bundle <percorso>`.
 
 `inference/loading.py` carica il bundle; `inference/decision.py` applica la soglia ai logits binari. `check_stream_decision.py` controlla equivalenza delle decisioni tra sequenza intera e streaming e correttezza sulle quattro sequenze generate. `benchmark_stream.py` misura la latenza per campione inclusa la decisione, su CPU e su CUDA se disponibile, riportando mediana, 95° percentile e massimo.
 

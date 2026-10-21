@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ltc-rnn-py"
+version = "0.1.0"
+description = "Experimental conductance-based LTC recurrent networks"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["torch>=2.6", "numpy>=1.26", "matplotlib>=3.8"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["ltc*", "models*", "inference*", "training*", "data*", "visualization*"]
+exclude = ["tests*", "outputs*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra --strict-markers"
+markers = ["cuda: requires a working CUDA device"]

@@ -188,8 +188,11 @@ def test_read_csv(tmp_path):
         (datetime(2024, 1, 3), 12.5),
     ]
     # A row with a missing price must not silently shorten the elapsed time.
-    with pytest.raises(ValueError, match="Periodi mancanti"):
-        resample_last(iter_csv_prices(path), period=timedelta(days=1))
+    day = timedelta(days=1)
+    starts, prices = resample_last(iter_csv_prices(path), period=day)
+    torch.testing.assert_close(elapsed_periods(starts, period=day),
+                               torch.tensor([2.0], dtype=torch.float64))
+    assert len(split_segments(starts, prices, period=day, calendar="continuous")) == 2
 
 
 def test_forecaster_shapes_and_gradients():

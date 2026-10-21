@@ -15,7 +15,7 @@ dev = ["pytest>=8,<10"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["ltc*", "models*", "inference*", "training*", "data*", "visualization*"]
+include = ["ltc*", "models*", "inference*", "training*", "data*", "visualization*", "timeseries*"]
 exclude = ["tests*", "outputs*"]
 
 [tool.pytest.ini_options]

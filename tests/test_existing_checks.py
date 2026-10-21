@@ -14,8 +14,8 @@ import torch
 ])
 def test_portable_check(module_name):
     # Rewrite assertions in the imported standalone scripts too.
-    pytest.register_assert_rewrite(module_name)
-    importlib.import_module(module_name).main()
+    pytest.register_assert_rewrite(f"checks.{module_name}")
+    importlib.import_module(f"checks.{module_name}").main()
 
 
 @pytest.mark.cuda
@@ -25,5 +25,5 @@ def test_portable_check(module_name):
     "check_synapse_parameters", "check_synapses", "check_solver",
 ])
 def test_cuda_check(module_name):
-    pytest.register_assert_rewrite(module_name)
-    importlib.import_module(module_name).main()
+    pytest.register_assert_rewrite(f"checks.{module_name}")
+    importlib.import_module(f"checks.{module_name}").main()

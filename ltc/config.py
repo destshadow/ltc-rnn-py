@@ -1,9 +1,9 @@
 from dataclasses import dataclass
 
 
-@dataclass(frozen=True) #@dataclass genera automaticamente il costruttore. Possiamo quindi scrivere: config = LTCConfig(input_size=3, hidden_size=8); frozen=True impedisce di modificare accidentalmente la configurazione dopo averla creata
-
-
+# @dataclass genera il costruttore: config = LTCConfig(input_size=3, hidden_size=8).
+# frozen=True impedisce di modificare la configurazione dopo averla creata.
+@dataclass(frozen=True)
 class LTCConfig:
     input_size: int
     hidden_size: int

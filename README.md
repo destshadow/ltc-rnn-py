@@ -55,9 +55,9 @@ Dalla radice del progetto, con il bundle locale disponibile:
 
 ```bash
 source .venv/bin/activate
-python visualize_stream.py --class-id 0 --seed 2026 --noise 0
-python visualize_stream.py --class-id 1 --seed 2026 --noise 0
-python visualize_stream.py --class-id 0 --seed 2026 --noise 0.05 --noise-seed 1101
+python -m experiments.visualize_stream --class-id 0 --seed 2026 --noise 0
+python -m experiments.visualize_stream --class-id 1 --seed 2026 --noise 0
+python -m experiments.visualize_stream --class-id 0 --seed 2026 --noise 0.05 --noise-seed 1101
 ```
 
 Il percorso predefinito è `outputs/event_order_inference_1000ep.pt`; `--bundle <percorso>` lo sostituisce. `--seed` controlla la sequenza, `--noise` la deviazione standard del rumore e `--noise-seed` la sua realizzazione. Servono Matplotlib e un backend grafico interattivo.
@@ -67,7 +67,7 @@ Il percorso predefinito è `outputs/event_order_inference_1000ep.pt`; `--bundle 
 Per esportare nuovamente il riferimento, solo se il file di destinazione non esiste:
 
 ```bash
-python prepare_inference.py --checkpoint outputs/event_order_noise_20260921T150040_212480Z/best.pt --output outputs/event_order_inference_1000ep.pt
+python -m experiments.prepare_inference --checkpoint outputs/event_order_noise_20260921T150040_212480Z/best.pt --output outputs/event_order_inference_1000ep.pt
 ```
 
 ### Organizzazione e prossime tappe
@@ -89,9 +89,9 @@ La struttura futura prevista distingue componenti autonomi `LTC/`, `SIM/`, `PROX
 `save_controller(path, model, dt=...)` salva parametri su CPU, configurazione, dimensione e attivazione dell'uscita, tipo numerico e `dt`, senza sovrascrivere un file esistente. `load_controller(path, device=...)` restituisce modello in modalità valutazione e metadati, supportando `float32` e `float64`. La memoria dell'episodio non è salvata. Le scale degli ingressi e la conversione in spinta fisica non sono ancora incluse nel formato.
 
 ```bash
-python check_controller.py
-python check_controller_stream.py
-python check_controller_loading.py
+python -m checks.check_controller
+python -m checks.check_controller_stream
+python -m checks.check_controller_loading
 ```
 
 I controlli coprono forme, limiti dei comandi, gradienti, ripartenza, equivalenza dello streaming e salvataggio/caricamento. L'utente ha confermato che il controllore ricaricato riproduce comandi e stato finale; gli script non sono stati rieseguiti durante questo aggiornamento documentale. I tre ingressi usati nei controlli sono esempi sintetici, non osservazioni del drone. La visualizzazione attuale resta dedicata alle sequenze A-B-C; non è ancora una demo del controllo verticale.
@@ -118,6 +118,21 @@ Il controller per questo compito avrà `input_size=2` e `output_size=1`. Le scal
 Il ciclo sarà osservazione → comando LTC → aggiornamento SIM → nuova osservazione; il valutatore ricaverà il punteggio dell'episodio per GA. L'uscita LTC va al simulatore, non direttamente al genetico.
 
 **Prossimo passo: costruire in `SIM` il moto verticale e verificarlo con spinta costante**, prima dell'apprendimento. La verifica dovrà confrontare quota e velocità con il comportamento atteso dalla fisica scelta. Seguirà un controller classico di riferimento. Massa, gravità, integrazione, eventuale resistenza, contatto col suolo e condizioni di fine episodio restano da definire; nessun simulatore è stato aggiunto in questo aggiornamento.
+
+### Test di allineamento con SIM
+
+`tests/test_sim_contract.py` verifica sul lato LTC il contratto con `../Simulatore/SIM`: episodi di 20 s al `dt = 0.01` predefinito del simulatore con 2 o 3 ingressi (il terzo è la spinta effettiva del motore), comandi convertibili in `float` entro [0, 1], equivalenza fra stream e rollout, reset e dipendenza della dinamica da `dt`. Un test a ciclo chiuso importa il SIM reale da `../Simulatore` o dal percorso in `LTC_SIM_ROOT` e viene saltato se assente, per esempio nella CI. Usa pesi non addestrati: controlla l'interfaccia, non la qualità del volo. Il collegamento definitivo resta compito di `PROXY`; il comando va passato al SIM come `float`.
+
+## Serie temporali finanziarie
+
+La cartella `timeseries/` riusa la stessa cella LTC per stimare il rendimento logaritmico del periodo successivo da una finestra di rendimenti passati. È un punto di partenza sperimentale, non uno strumento di investimento.
+
+```bash
+python -m experiments.train_timeseries --arff "../BTC dataset/dataset_"
+python -m experiments.train_timeseries --csv prezzi.csv --time-column Date --price-column Close
+```
+
+Il protocollo evita le fughe di informazione più comuni: prezzi ricampionati all'ultimo valore di ogni periodo (`--period-hours`, predefinito 24), divisione cronologica in training, validazione e test, finestre create dentro ciascun tratto, standardizzazione stimata solo sul training, scelta dell'epoca sulla validazione e test valutato una sola volta. I risultati sono sempre confrontati con due riferimenti: rendimento nullo ("il prezzo resta quello di oggi") e rendimento medio del training. Battere questi riferimenti sul test è la condizione minima per considerare utile un modello; costi di transazione e spread non sono ancora inclusi. Ogni esecuzione salva `best.pt` e `results.json` in `outputs/timeseries_<timestamp>/`.
 
 ## Dinamica e forme dei tensori
 
@@ -211,31 +226,31 @@ deactivate
 Con l'ambiente virtuale attivo, lo script disponibile si esegue con:
 
 ```bash
-python check_environment.py
+python -m checks.check_environment
 ```
 
 Lo script stampa le versioni di PyTorch e CUDA, verifica la disponibilità della GPU ed esegue una moltiplicazione su un tensore CUDA. Se PyTorch non riesce ad accedere alla GPU, solleva un errore. Il risultato atteso della moltiplicazione è `[2.0, 4.0, 6.0]`; l'esecuzione non è ancora stata verificata dall'assistente.
 
 ## Controlli disponibili
 
-Eseguire dalla radice del repository con l'ambiente virtuale attivo:
+Gli script di controllo sono in `checks/`, gli esperimenti in `experiments/`. Eseguirli come moduli dalla radice del repository, con l'ambiente virtuale attivo:
 
 ```bash
-python check_config.py
-python check_environment.py
-python check_state.py
-python check_neuron_parameters.py
-python check_synapse_parameters.py
-python check_synapses.py
-python check_solver.py
-python check_solver_validation.py
-python check_solver_dynamics.py
-python check_cell.py
-python check_temporal_order.py
-python check_classifier.py
-python check_event_order.py
-python check_sequence_modes.py
-python check_stream.py
+python -m checks.check_config
+python -m checks.check_environment
+python -m checks.check_state
+python -m checks.check_neuron_parameters
+python -m checks.check_synapse_parameters
+python -m checks.check_synapses
+python -m checks.check_solver
+python -m checks.check_solver_validation
+python -m checks.check_solver_dynamics
+python -m checks.check_cell
+python -m checks.check_temporal_order
+python -m checks.check_classifier
+python -m checks.check_event_order
+python -m checks.check_sequence_modes
+python -m checks.check_stream
 ```
 
 `check_config.py`, `check_solver_validation.py`, `check_solver_dynamics.py`, `check_temporal_order.py`, `check_event_order.py` e `check_sequence_modes.py` funzionano su CPU. `check_cell.py` aggiunge un confronto CPU/GPU quando CUDA è disponibile; `check_classifier.py` e `check_stream.py` scelgono CUDA se disponibile, altrimenti CPU. `check_stream.py` richiede `outputs/event_order_best.pt`. Gli altri script elencati richiedono CUDA nella loro versione attuale. Questa lista documenta i controlli disponibili, non attesta che siano stati tutti eseguiti e superati.
@@ -279,9 +294,9 @@ Tutti i comandi vanno eseguiti dalla radice, con `.venv` attivo. Gli script di t
 ### Esperimento con due impulsi
 
 ```bash
-python train_tiny.py
-python evaluate_temporal_order.py
-python inspect_temporal_errors.py
+python -m experiments.train_tiny
+python -m experiments.evaluate_temporal_order
+python -m experiments.inspect_temporal_errors
 python -m visualization.memory_grid_viewer
 ```
 
@@ -290,10 +305,10 @@ Il training salva `outputs/tiny_checkpoint.pt`. Gli altri comandi caricano quel 
 ### Esperimento A-B-C/B-A-C
 
 ```bash
-python train_event_order.py
-python inspect_event_memory.py
-python inspect_decision_threshold.py
-python test_event_order.py --checkpoint outputs/event_order_best.pt
+python -m experiments.train_event_order
+python -m experiments.inspect_event_memory
+python -m experiments.inspect_decision_threshold
+python -m experiments.test_event_order --checkpoint outputs/event_order_best.pt
 ```
 
 Il training usa mini-batch, Adam, clipping dei gradienti e insiemi generati con semi distinti: 123 per training, 2026 per validazione. Valuta ogni dieci epoche, includendo l'epoca zero, e salva il checkpoint con la minore perdita tra le epoche valutate in `outputs/event_order_best.pt`. Una nuova esecuzione può sovrascrivere questo file.
@@ -308,8 +323,8 @@ La decisione binaria usa il margine `logit_0 - logit_1`: sotto la soglia assegna
 ### Esperimento con rumore configurabile
 
 ```bash
-python train_event_order_noise.py
-python compare_noise_models.py --noisy-checkpoint outputs/event_order_noise_<timestamp>/best.pt
+python -m experiments.train_event_order_noise
+python -m experiments.compare_noise_models --noisy-checkpoint outputs/event_order_noise_<timestamp>/best.pt
 ```
 
 `train_event_order_noise.py` usa attualmente `training_noise_std = 0.0` e `validation_noise_std = 0.01`: il training è pulito, mentre la validazione comprende sia dati puliti sia una copia con rumore gaussiano fisso (seme 808). Restano 1000 epoche, valutazione ogni dieci epoche inclusa l'epoca zero, Adam con learning rate `0.01`, batch di 64, `dt = 0.1`, 8 neuroni nascosti e 6 sottopassi. I dataset contengono 128 coppie ciascuno, con semi 123/2026; il seme del modello è 42 e quello del rumore di training è 707.
@@ -334,9 +349,9 @@ Entrambi i metodi di inserimento restituiscono logits `[1, num_classes]` dopo l'
 ### Esportazione, decisione e misure
 
 ```bash
-python prepare_inference.py --checkpoint outputs/event_order_best.pt --output outputs/event_order_inference.pt
-python benchmark_stream.py
-python inspect_noise_robustness.py
+python -m experiments.prepare_inference --checkpoint outputs/event_order_best.pt --output outputs/event_order_inference.pt
+python -m experiments.benchmark_stream
+python -m experiments.inspect_noise_robustness
 ```
 
 `prepare_inference.py` richiede `--checkpoint` e `--output`, controlla che il modello abbia due classi e sceglie la soglia sul training in modalità valutazione su CPU. Esporta pesi, configurazione, soglia, percorso e hash del checkpoint, epoca sorgente, dispositivo della soglia e versione PyTorch. Crea le cartelle necessarie e salva con apertura esclusiva (`xb`), senza sovrascrivere file esistenti. I due comandi successivi usano `outputs/event_order_inference.pt`, sostituibile con `--bundle <percorso>`.
@@ -348,8 +363,8 @@ python inspect_noise_robustness.py
 `check_stream_decision.py` usa invece il percorso fisso `outputs/event_order_inference_1000ep.pt`. Per prepararlo dal checkpoint desiderato:
 
 ```bash
-python prepare_inference.py --checkpoint outputs/event_order_noise_<timestamp>/best.pt --output outputs/event_order_inference_1000ep.pt
-python check_stream_decision.py
+python -m experiments.prepare_inference --checkpoint outputs/event_order_noise_<timestamp>/best.pt --output outputs/event_order_inference_1000ep.pt
+python -m checks.check_stream_decision
 ```
 
 Sostituire `<timestamp>` con la cartella reale. Il suffisso `1000ep` è un nome di file: il checkpoint migliore può provenire da un'epoca precedente alla millesima. Il controllo richiede anche che tutte e quattro le sequenze siano classificate correttamente; un errore di accuratezza non dimostra da solo un errore nello streaming.
@@ -359,8 +374,8 @@ Sostituire `<timestamp>` con la cartella reale. Il suffisso `1000ep` è un nome 
 ### Neuroni e connessioni ricorrenti
 
 ```bash
-python visualize_stream.py --connections strength
-python visualize_stream.py --connections conductance --class-id 1 --seed 2026
+python -m experiments.visualize_stream --connections strength
+python -m experiments.visualize_stream --connections conductance --class-id 1 --seed 2026
 ```
 
 `--connections` accetta `strength` (predefinito) e `conductance`. Il colore dei neuroni indica lo stato interno, su scala fissa; facendo clic su un neurone si selezionano le connessioni ricorrenti entranti. L'autoconnessione è riportata numericamente, senza freccia.
@@ -376,8 +391,8 @@ Le modalità condividono la scala basata sulla massima `strength`. Le frecce son
 
 
 ```bash
-python visualize_stream.py --bundle outputs/event_order_inference_1000ep.pt --class-id 0
-python visualize_stream.py --bundle outputs/event_order_inference_1000ep.pt --class-id 1
+python -m experiments.visualize_stream --bundle outputs/event_order_inference_1000ep.pt --class-id 0
+python -m experiments.visualize_stream --bundle outputs/event_order_inference_1000ep.pt --class-id 1
 ```
 
 Il viewer usa la CPU e anima una sequenza sintetica A-B-C o B-A-C (`--seed`, predefinito 2026), con rumore opzionale (`--noise`, predefinito 0.0; `--noise-seed`, predefinito 1101), mostrando ingressi, stato dei neuroni e margine rispetto alla soglia salvata. Le decisioni intermedie sono indicate come provvisorie: il classificatore è addestrato sullo stato finale. Richiede il bundle esportato e un backend grafico interattivo di Matplotlib. `--bundle` permette di usare un percorso diverso.
@@ -425,19 +440,24 @@ Il secondo viewer usa una cella non addestrata su CPU e mostra ingresso, stati d
 | `inference/connection_inspection.py` | Calcolo delle conduttanze ricorrenti sullo stato osservato |
 | `inference/stream.py` | Inferenza con stato persistente tra campioni o blocchi |
 | `inference/loading.py`, `inference/decision.py` | Caricamento del bundle e decisione con soglia |
-| `prepare_inference.py`, `benchmark_stream.py` | Esportazione del bundle e misura della latenza |
-| `compare_noise_models.py` | Confronto dei checkpoint su validazione con rumore condiviso |
+| `experiments/prepare_inference.py`, `experiments/benchmark_stream.py` | Esportazione del bundle e misura della latenza |
+| `experiments/compare_noise_models.py` | Confronto dei checkpoint su validazione con rumore condiviso |
 | `visualization/synapse_curve.py` | Campionamento della curva sinaptica |
 | `visualization/synapse_viewer.py` | Grafico interattivo con slider |
 | `visualization/state_viewer.py` | Risposta dello stato a un impulso e confronto con ingresso nullo |
 | `visualization/memory_grid_viewer.py` | Visualizzazione della memoria del modello addestrato sui due impulsi |
-| `train_*.py`, `evaluate_temporal_order.py`, `inspect_*.py`, `test_event_order.py` | Esperimenti, valutazione e analisi dei checkpoint |
-| `visualize_stream.py` | Caricamento del bundle, preparazione dei dati e animazione streaming |
+| `experiments/train_*.py`, `evaluate_temporal_order.py`, `inspect_*.py`, `test_event_order.py` | Esperimenti, valutazione e analisi dei checkpoint |
+| `experiments/visualize_stream.py` | Caricamento del bundle, preparazione dei dati e animazione streaming |
 | `visualization/stream_plot.py` | Creazione dei pannelli e spazio per i controlli |
 | `visualization/playback.py` | Timer, pausa, avanzamento della sessione e riavvio |
 | `visualization/neuron_view.py` | Stato dei neuroni tramite colori e valori |
 | `visualization/neuron_connections.py` | Selezione del neurone e connessioni ricorrenti per strength o conduttanza |
-| `check_*.py` | Script di controllo |
+| `checks/check_*.py` | Script di controllo, raccolti anche da `tests/` |
+| `timeseries/prices.py` | Lettura di prezzi da CSV o ARFF e ricampionamento all'ultimo prezzo del periodo |
+| `timeseries/windows.py` | Rendimenti logaritmici, divisione cronologica, walk-forward, standardizzazione e finestre |
+| `timeseries/model.py`, `timeseries/evaluation.py` | Previsore LTC del rendimento successivo, metriche e riferimenti |
+| `experiments/train_timeseries.py` | Training e confronto con i riferimenti su validazione e test |
+| `tests/test_sim_contract.py` | Contratto con SIM: `dt = 0.01`, comandi in [0, 1], ciclo chiuso con il SIM reale |
 | `.gitignore` | Esclusione di ambienti virtuali, cache e file locali |
 
 ## Limiti attuali

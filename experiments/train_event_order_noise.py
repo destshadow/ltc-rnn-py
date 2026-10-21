@@ -1,19 +1,17 @@
+import csv
 from dataclasses import asdict
+from datetime import datetime, timezone
 from pathlib import Path
 
 import torch
 from torch import nn
 
 from data.event_order import make_event_order
+from data.noise import add_gaussian_noise
 from ltc.config import LTCConfig
 from models.sequence_classifier import SequenceClassifier
 from training.epoch import train_epoch
 from training.evaluation import evaluate_classifier
-
-import csv
-from datetime import datetime, timezone
-
-from data.noise import add_gaussian_noise
 
 
 def main():

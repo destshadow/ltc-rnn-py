@@ -29,7 +29,7 @@ Il progetto non impone una versione CUDA a tutti gli ambienti.
 python -m pytest
 ```
 
-La raccolta è limitata a `tests/`: `test_event_order.py` nella radice rimane
+La raccolta è limitata a `tests/`: `experiments/test_event_order.py` rimane
 un esperimento separato che richiede un checkpoint addestrato.
 La suite raccoglie 11 controlli esistenti portabili e sei controlli CUDA,
 saltati quando CUDA non è disponibile. Alcuni controlli portabili aggiungono
@@ -38,6 +38,10 @@ automaticamente un confronto GPU se disponibile. Per forzare solo CPU:
 ```bash
 CUDA_VISIBLE_DEVICES='' python -m pytest
 ```
+
+`tests/test_sim_contract.py` include un test a ciclo chiuso con il SIM reale,
+saltato se `../Simulatore` (o `LTC_SIM_ROOT`) non esiste. `tests/test_timeseries.py`
+controlla dati, finestre e divisione cronologica delle serie temporali.
 
 I nuovi test controllano il round-trip del controller in float32 e float64,
 la protezione dalla sovrascrittura, il rifiuto di dtype non supportati o misti,

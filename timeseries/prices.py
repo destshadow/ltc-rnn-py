@@ -101,10 +101,11 @@ def resample_last(
 ) -> tuple[list[datetime], torch.Tensor]:
     """Tiene l'ultimo prezzo di ogni periodo (es. chiusura giornaliera).
 
-    Richiede periodi consecutivi fra il primo e l'ultimo osservato; un periodo
-    vuoto solleva ValueError. Non distingue chiusure di mercato da dati mancanti
-    e non inserisce prezzi artificiali. Restituisce l'inizio di ogni periodo
-    e i prezzi float64. Gli istanti devono essere strettamente crescenti.
+    I periodi senza dati non compaiono e nessun prezzo viene inserito: le pause
+    restano visibili negli inizi restituiti. Chiusure di mercato e dati mancanti
+    si distinguono con timeseries.calendar (split_segments, elapsed_periods).
+    Restituisce l'inizio di ogni periodo e i prezzi float64. Gli istanti devono
+    essere strettamente crescenti.
     """
     if period <= timedelta(0):
         raise ValueError("period deve essere positivo.")
@@ -127,13 +128,6 @@ def resample_last(
         if starts and starts[-1] == start:
             prices[-1] = price
         else:
-            if starts and start != starts[-1] + period:
-                raise ValueError(
-                    "Periodi mancanti: atteso un prezzo nel periodo che inizia "
-                    f"a {starts[-1] + period}, prossimo periodo osservato {start}. "
-                    "Definire il calendario o la gestione dei dati mancanti "
-                    "prima del training."
-                )
             starts.append(start)
             prices.append(price)
 

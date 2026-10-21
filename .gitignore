@@ -3,6 +3,7 @@
 /.agents/
 /.codex/
 /.coordination/
+/.claude/
 
 # Modelli e risultati locali
 /outputs/

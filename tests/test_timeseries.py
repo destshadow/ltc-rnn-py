@@ -1,5 +1,6 @@
 """Time-series data handling: alignment, chronological order and no leakage."""
 
+import json
 import math
 from datetime import datetime, timedelta
 
@@ -224,8 +225,11 @@ def test_regression_report_and_baselines():
 
     baselines = baseline_predictions(targets, training_mean=0.05)
     torch.testing.assert_close(baselines["zero"], torch.zeros(4))
-    # A zero forecast never picks a direction.
-    assert math.isnan(regression_report(baselines["zero"], targets)["direction_accuracy"])
+    # A zero forecast never picks a direction: the metric is absent, not NaN,
+    # so the report stays valid strict JSON.
+    zero_report = regression_report(baselines["zero"], targets)
+    assert zero_report["direction_accuracy"] is None
+    assert json.loads(json.dumps(zero_report, allow_nan=False)) == zero_report
     torch.testing.assert_close(baselines["training_mean"], torch.full((4,), 0.05))
 
 

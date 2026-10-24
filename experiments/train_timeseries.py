@@ -8,7 +8,6 @@ Esempio (dataset Bitstamp al minuto, chiusure giornaliere):
 import argparse
 import copy
 import json
-import math
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -94,7 +93,7 @@ def report_all(name, model, inputs, targets, scaler, args, training_mean):
         print(
             f"  {label:14s} mse {values['mse']:.3e} | "
             f"mae {values['mae']:.3e} | segno "
-            + ("n/d" if math.isnan(direction) else f"{100 * direction:.1f}%")
+            + ("n/d" if direction is None else f"{100 * direction:.1f}%")
         )
 
     return results
@@ -216,7 +215,9 @@ def main():
         directory / "best.pt",
     )
     (directory / "results.json").write_text(
-        json.dumps({"protocol": protocol, "results": results}, indent=2),
+        json.dumps(
+            {"protocol": protocol, "results": results}, indent=2, allow_nan=False,
+        ),
         encoding="utf-8",
     )
     print(f"\nRisultati in {directory}")

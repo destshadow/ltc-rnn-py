@@ -37,7 +37,8 @@ def regression_report(
     """Errori e frazione di segni indovinati.
 
     Il segno conta solo dove obiettivo e previsione sono diversi da zero:
-    una previsione nulla non sceglie una direzione (NaN se non ne sceglie mai).
+    una previsione nulla non sceglie una direzione. Se non ne sceglie mai,
+    la metrica è None (null in JSON), non un numero.
     """
     if predictions.shape != targets.shape or targets.ndim != 1 or len(targets) == 0:
         raise ValueError("Servono previsioni e obiettivi [n] della stessa forma.")
@@ -53,7 +54,7 @@ def regression_report(
         "direction_accuracy": (
             hits.sum().item() / decided.sum().item()
             if decided.any().item()
-            else float("nan")
+            else None
         ),
     }
 

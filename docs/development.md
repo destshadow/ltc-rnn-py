@@ -23,6 +23,13 @@ python -m pip install -e '.[dev]'
 Un PyTorch CUDA già installato che soddisfa il requisito può essere conservato.
 Il progetto non impone una versione CUDA a tutti gli ambienti.
 
+Il pacchetto installabile contiene solo le librerie `ltc`, `models`, `inference`,
+`training`, `data`, `visualization` e `timeseries`. `checks/` ed `experiments/`
+sono esclusi di proposito: sono strumenti del repository, usano percorsi relativi
+come `outputs/` e si eseguono come moduli dalla radice, per esempio
+`python -m experiments.train_timeseries`. Non sono disponibili da una wheel
+installata altrove.
+
 ## Suite automatica
 
 ```bash

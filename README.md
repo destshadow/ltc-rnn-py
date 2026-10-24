@@ -235,7 +235,7 @@ Lo script stampa le versioni di PyTorch e CUDA, verifica la disponibilità della
 
 ## Controlli disponibili
 
-Gli script di controllo sono in `checks/`, gli esperimenti in `experiments/`. Eseguirli come moduli dalla radice del repository, con l'ambiente virtuale attivo:
+Gli script di controllo sono in `checks/`, gli esperimenti in `experiments/`; non fanno parte del pacchetto installabile (vedi la [guida di sviluppo](docs/development.md)). Eseguirli come moduli dalla radice del repository, con l'ambiente virtuale attivo:
 
 ```bash
 python -m checks.check_config

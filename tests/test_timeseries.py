@@ -8,6 +8,7 @@ import torch
 
 from ltc.config import LTCConfig
 from timeseries.calendar import elapsed_periods, expected_periods, split_segments
+from timeseries.dataset import make_dataset, returns_by_segment, split_pieces
 from timeseries.evaluation import baseline_predictions, predict, regression_report
 from timeseries.model import ReturnForecaster
 from timeseries.prices import iter_arff_prices, iter_csv_prices, resample_last
@@ -226,3 +227,164 @@ def test_regression_report_and_baselines():
     # A zero forecast never picks a direction.
     assert math.isnan(regression_report(baselines["zero"], targets)["direction_accuracy"])
     torch.testing.assert_close(baselines["training_mean"], torch.full((4,), 0.05))
+
+
+def test_windows_with_several_inputs_keep_time_alignment():
+    series = torch.arange(10.0).reshape(5, 2)
+    targets = torch.arange(100.0, 105.0)
+    inputs, window_targets = make_windows(series, lookback=2, targets=targets)
+
+    assert inputs.shape == (3, 2, 2)
+    for index in range(3):
+        torch.testing.assert_close(inputs[index], series[index:index + 2])
+    torch.testing.assert_close(window_targets, targets[2:])
+
+    with pytest.raises(ValueError, match="targets"):
+        make_windows(series, lookback=2)
+
+
+# --- Step 1 acceptance criteria: calendar segments in the training data ---
+
+DAY = timedelta(days=1)
+MISSING_TUESDAY = datetime(2024, 1, 9)
+
+
+def weekday_series():
+    """Weekday closes from Mon 2024-01-01 to Fri 01-19, Tue 01-09 missing.
+
+    Returns differ day by day; across the missing day the price jumps x100,
+    so any return computed across the gap would be log(100).
+    """
+    starts, prices = [], []
+    day, price = datetime(2024, 1, 1), 100.0
+    while day <= datetime(2024, 1, 19):
+        if day.weekday() < 5 and day != MISSING_TUESDAY:
+            price *= 100.0 if day == MISSING_TUESDAY + DAY else 1 + day.day / 1000
+            starts.append(day)
+            prices.append(price)
+        day += DAY
+    return starts, torch.tensor(prices, dtype=torch.float64)
+
+
+def pieces_for(calendar):
+    starts, prices = weekday_series()
+    segments = split_segments(starts, prices, period=DAY, calendar=calendar)
+    return returns_by_segment(segments, period=DAY)
+
+
+@pytest.mark.parametrize("calendar,expected_elapsed", [
+    # Weekend expected: Fri -> Mon stays in the piece, lasting 3 days.
+    ("weekdays", [[1, 1, 1, 1, 3], [1, 1, 3, 1, 1, 1, 1]]),
+    # Every day expected: weekends and the Tuesday all cut the series.
+    ("continuous", [[1, 1, 1, 1], [1, 1], [1, 1, 1, 1]]),
+])
+def test_criterion1_no_return_or_window_crosses_missing_data(calendar, expected_elapsed):
+    pieces = pieces_for(calendar)
+
+    assert [piece.elapsed.tolist() for piece in pieces] == expected_elapsed
+    for piece in pieces:
+        assert MISSING_TUESDAY not in piece.end_times
+        assert piece.returns.abs().max() < math.log(2)
+
+    scaler = Standardizer.fit(torch.cat([piece.returns for piece in pieces]))
+    inputs, targets = make_dataset(pieces, scaler=scaler, lookback=2)
+    restored = scaler.inverse(torch.cat([inputs[:, :, 0].flatten(), targets]).double())
+    assert restored.abs().max() < math.log(2)
+
+
+@pytest.mark.parametrize("calendar", ["weekdays", "continuous"])
+def test_criterion1_windows_never_join_two_pieces(calendar):
+    # Returns are all small, so only an explicit reference catches windows
+    # built after concatenating the pieces.
+    pieces = pieces_for(calendar)
+    lookback = 2
+    scaler = Standardizer.fit(torch.cat([piece.returns for piece in pieces]))
+    inputs, targets = make_dataset(pieces, scaler=scaler, lookback=lookback)
+
+    expected_inputs, expected_targets = [], []
+    for piece in pieces:
+        standardized = scaler.transform(piece.returns)
+        features = torch.stack([standardized, piece.elapsed], dim=1)
+        for k in range(len(piece.returns) - lookback):
+            expected_inputs.append(features[k:k + lookback])
+            expected_targets.append(standardized[k + lookback])
+
+    assert len(targets) == sum(max(0, len(p.returns) - lookback) for p in pieces)
+    torch.testing.assert_close(inputs, torch.stack(expected_inputs).float())
+    torch.testing.assert_close(targets, torch.stack(expected_targets).float())
+
+
+def test_criterion2_elapsed_is_aligned_with_its_return():
+    starts, prices = weekday_series()
+    pieces = pieces_for("weekdays")
+
+    for piece in pieces:
+        for return_value, elapsed, end in zip(piece.returns, piece.elapsed, piece.end_times):
+            index = starts.index(end)
+            assert return_value == torch.log(prices[index] / prices[index - 1])
+            assert elapsed == (end - starts[index - 1]) / DAY
+
+    piece = pieces[1]
+    scaler = Standardizer.fit(piece.returns)
+    inputs, targets = make_dataset([piece], scaler=scaler, lookback=2)
+    for k in range(len(targets)):
+        torch.testing.assert_close(
+            scaler.inverse(inputs[k, :, 0].double()), piece.returns[k:k + 2],
+        )
+        torch.testing.assert_close(inputs[k, :, 1].double(), piece.elapsed[k:k + 2])
+        torch.testing.assert_close(
+            scaler.inverse(targets[k].double()), piece.returns[k + 2],
+        )
+
+
+def daily_series(missing_day=50, days=100, shock=1.0):
+    """Continuous daily closes with one missing day; shock scales late returns."""
+    start = datetime(2024, 1, 1)
+    starts, prices, price = [], [], 100.0
+    for index in range(days):
+        if index == missing_day:
+            continue
+        step = 1 + (index % 7 - 3) / 100
+        price *= step ** (shock if index >= 90 else 1.0)
+        starts.append(start + index * DAY)
+        prices.append(price)
+    return starts, torch.tensor(prices, dtype=torch.float64)
+
+
+def split_for(**series_options):
+    starts, prices = daily_series(**series_options)
+    segments = split_segments(starts, prices, period=DAY, calendar="continuous")
+    return split_pieces(
+        returns_by_segment(segments, period=DAY),
+        validation_fraction=0.15, test_fraction=0.15,
+    )
+
+
+def test_criterion3_normalization_uses_only_training():
+    training, validation, _ = split_for()
+    scaler = Standardizer.fit(torch.cat([piece.returns for piece in training]))
+
+    # Changing only the last (test) returns leaves the training statistics unchanged.
+    shocked_training, _, shocked_test = split_for(shock=5.0)
+    assert Standardizer.fit(torch.cat([p.returns for p in shocked_training])) == scaler
+    assert not torch.equal(shocked_test[-1].returns, split_for()[2][-1].returns)
+
+    # Validation features are scaled with the training statistics, not refit.
+    inputs, _ = make_dataset(validation, scaler=scaler, lookback=3)
+    expected = scaler.transform(validation[0].returns[:3]).float()
+    torch.testing.assert_close(inputs[0, :, 0], expected)
+
+
+def test_criterion4_split_is_chronological_and_complete():
+    parts = split_for()
+    counts = [sum(len(piece.returns) for piece in part) for part in parts]
+
+    # 49 + 48 returns from the two segments around the missing day.
+    assert counts == [69, 14, 14]
+
+    times = [[time for piece in part for time in piece.end_times] for part in parts]
+    assert max(times[0]) < min(times[1]) and max(times[1]) < min(times[2])
+    for part in parts:
+        for piece in part:
+            ends = piece.end_times
+            assert all(later - earlier == DAY for earlier, later in zip(ends, ends[1:]))

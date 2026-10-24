@@ -105,14 +105,24 @@ def make_windows(
     series: torch.Tensor,
     *,
     lookback: int,
+    targets: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Finestre [n, lookback, 1] e obiettivo successivo [n].
+    """Finestre [n, lookback, ingressi] e obiettivo successivo [n].
 
-    La finestra i contiene series[i:i + lookback]; l'obiettivo è
-    series[i + lookback], sempre successivo all'ultimo ingresso.
+    series ha forma [m] (un ingresso) o [m, ingressi]. La finestra i contiene
+    series[i:i + lookback]; l'obiettivo è targets[i + lookback], sempre
+    successivo all'ultimo ingresso. Senza targets si usa series [m].
     """
-    if series.ndim != 1:
-        raise ValueError("series deve avere forma [n].")
+    if series.ndim not in (1, 2):
+        raise ValueError("series deve avere forma [m] o [m, ingressi].")
+
+    if targets is None:
+        if series.ndim != 1:
+            raise ValueError("Con più ingressi serve targets esplicito.")
+        targets = series
+
+    if targets.shape != series.shape[:1]:
+        raise ValueError("targets deve avere forma [m], allineata a series.")
 
     if type(lookback) is not int or lookback <= 0:
         raise ValueError("lookback deve essere un intero positivo.")
@@ -121,7 +131,8 @@ def make_windows(
     if count <= 0:
         raise ValueError("Serie più corta della finestra richiesta.")
 
-    inputs = series.unfold(0, lookback, 1)[:count].unsqueeze(-1)
-    targets = series[lookback:]
+    features = series.unsqueeze(-1) if series.ndim == 1 else series
+    # unfold produce [finestre, ingressi, lookback]: riportiamo il tempo al centro.
+    inputs = features.unfold(0, lookback, 1)[:count].transpose(1, 2)
 
-    return inputs.contiguous(), targets.clone()
+    return inputs.contiguous(), targets[lookback:].clone()

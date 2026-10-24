@@ -17,16 +17,17 @@ import torch
 from torch import nn
 
 from ltc.config import LTCConfig
+from timeseries.calendar import CALENDARS, split_segments
+from timeseries.dataset import make_dataset, returns_by_segment, split_pieces
 from timeseries.evaluation import baseline_predictions, predict, regression_report
 from timeseries.model import ReturnForecaster
 from timeseries.prices import iter_arff_prices, iter_csv_prices, resample_last
-from timeseries.windows import (
-    Standardizer,
-    chronological_split,
-    log_returns,
-    make_windows,
-)
+from timeseries.windows import Standardizer
 from training.epoch import train_epoch
+
+
+# Ordine degli ingressi della LTC, salvato in protocollo e checkpoint.
+INPUTS = ["standardized_return", "elapsed_periods"]
 
 
 def parse_arguments():
@@ -37,6 +38,11 @@ def parse_arguments():
     parser.add_argument("--time-column", default=None)
     parser.add_argument("--price-column", default="Close")
     parser.add_argument("--period-hours", type=float, default=24.0)
+    parser.add_argument("--calendar", choices=CALENDARS, default="continuous")
+    parser.add_argument(
+        "--max-skipped", type=int, default=0,
+        help="Periodi attesi mancanti tollerati senza spezzare la serie.",
+    )
     parser.add_argument("--lookback", type=int, default=30)
     parser.add_argument("--hidden-size", type=int, default=8)
     parser.add_argument("--substeps", type=int, default=6)
@@ -64,7 +70,11 @@ def load_series(args):
             price_attribute=args.price_column,
         )
 
-    return resample_last(samples, period=timedelta(hours=args.period_hours))
+    return resample_last(samples, period=period_of(args))
+
+
+def period_of(args):
+    return timedelta(hours=args.period_hours)
 
 
 def report_all(name, model, inputs, targets, scaler, args, training_mean):
@@ -97,26 +107,29 @@ def main():
 
     print("Lettura e ricampionamento dei prezzi...", flush=True)
     starts, prices = load_series(args)
-    returns = log_returns(prices)
 
-    training, validation, test = chronological_split(
-        returns,
+    # Dati mancanti spezzano la serie; le chiusure previste dal calendario no.
+    segments = split_segments(
+        starts, prices,
+        period=period_of(args),
+        calendar=args.calendar,
+        max_skipped=args.max_skipped,
+    )
+    parts = split_pieces(
+        returns_by_segment(segments, period=period_of(args)),
         validation_fraction=args.validation_fraction,
         test_fraction=args.test_fraction,
     )
-    scaler = Standardizer.fit(training)
+    scaler = Standardizer.fit(torch.cat([piece.returns for piece in parts[0]]))
 
-    datasets = {}
-    for name, segment in (
-        ("training", training), ("validation", validation), ("test", test),
-    ):
-        inputs, targets = make_windows(
-            scaler.transform(segment).float(), lookback=args.lookback
-        )
-        datasets[name] = (inputs, targets)
+    datasets = {
+        name: make_dataset(pieces, scaler=scaler, lookback=args.lookback)
+        for name, pieces in zip(("training", "validation", "test"), parts)
+    }
 
+    # Ingressi: rendimento standardizzato e durata dell'intervallo in periodi.
     config = LTCConfig(
-        input_size=1, hidden_size=args.hidden_size, substeps=args.substeps
+        input_size=2, hidden_size=args.hidden_size, substeps=args.substeps
     )
     model = ReturnForecaster(config).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
@@ -129,6 +142,7 @@ def main():
 
     print("Dispositivo:", device)
     print(f"Periodi: {len(prices)} ({starts[0]} → {starts[-1]})")
+    print(f"Tratti senza dati mancanti ({args.calendar}): {len(segments)}")
     print("Finestre:", {name: len(data[1]) for name, data in datasets.items()})
 
     best_loss = float("inf")
@@ -179,6 +193,8 @@ def main():
         "periods": len(prices),
         "first_period": starts[0].isoformat(),
         "last_period": starts[-1].isoformat(),
+        "segments": len(segments),
+        "inputs": INPUTS,
         "standardizer": asdict(scaler),
         "best_epoch": best_epoch,
         "torch_version": torch.__version__,
@@ -192,6 +208,10 @@ def main():
             "dt": args.dt,
             "lookback": args.lookback,
             "standardizer": asdict(scaler),
+            "calendar": args.calendar,
+            "period_hours": args.period_hours,
+            "max_skipped": args.max_skipped,
+            "inputs": INPUTS,
         },
         directory / "best.pt",
     )

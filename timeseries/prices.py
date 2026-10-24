@@ -40,6 +40,14 @@ def iter_csv_prices(
                 raise ValueError(f"Colonna assente nel CSV: {name}.")
 
         for row in reader:
+            # Campi assenti (riga più corta dell'intestazione) arrivano come None;
+            # un campo presente ma vuoto è invece un prezzo mancante.
+            for name in (time_column, price_column):
+                if row[name] is None:
+                    raise ValueError(
+                        f"Riga {reader.line_num} incompleta: manca la colonna {name}."
+                    )
+
             price = _parse_price(row[price_column])
             if price is None:
                 continue
@@ -83,9 +91,18 @@ def iter_arff_prices(
         time_index = attributes.index(time_attribute)
         price_index = attributes.index(price_attribute)
 
-        for row in csv.reader(file, quotechar="'"):
+        needed = max(time_index, price_index) + 1
+        rows = csv.reader(file, quotechar="'")
+
+        for row in rows:
             if not row or row[0].startswith("%"):
                 continue
+
+            if len(row) < needed:
+                raise ValueError(
+                    f"Riga di dati {rows.line_num} incompleta: "
+                    f"{len(row)} campi, almeno {needed} attesi."
+                )
 
             price = _parse_price(row[price_index])
             if price is None:

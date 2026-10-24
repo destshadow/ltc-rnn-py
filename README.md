@@ -125,12 +125,14 @@ Il ciclo sarà osservazione → comando LTC → aggiornamento SIM → nuova osse
 
 ## Serie temporali finanziarie
 
-La cartella `timeseries/` riusa la stessa cella LTC per stimare il rendimento logaritmico del periodo successivo da una finestra di rendimenti passati. È un punto di partenza sperimentale, non uno strumento di investimento.
+La cartella `timeseries/` riusa la stessa cella LTC per stimare il rendimento logaritmico del periodo successivo da una finestra di osservazioni passate. Ogni osservazione ha due ingressi: il rendimento standardizzato e la durata di calendario dello stesso intervallo, in periodi (venerdì → lunedì vale 3). È un punto di partenza sperimentale, non uno strumento di investimento.
 
 ```bash
-python -m experiments.train_timeseries --arff "../BTC dataset/dataset_"
-python -m experiments.train_timeseries --csv prezzi.csv --time-column Date --price-column Close
+python -m experiments.train_timeseries --arff prezzi.arff --calendar continuous
+python -m experiments.train_timeseries --csv prezzi.csv --time-column Date --price-column Close --calendar weekdays
 ```
+
+`--calendar` indica quali periodi sono attesi: `continuous` (predefinito) li attende tutti, come per le cripto; `weekdays` richiede periodi di un giorno e considera chiusi sabato e domenica, ma non conosce le festività. Un periodo atteso senza dati spezza la serie in tratti: rendimenti e finestre non attraversano mai un'interruzione. `--max-skipped N` (predefinito 0) è una tolleranza esplicita: fino a N periodi attesi mancanti non spezzano la serie, per esempio `1` per tollerare le festività con `weekdays`, sapendo che così viene tollerato anche un singolo giorno di dati persi; la durata ne tiene conto. Calendario, `max_skipped` e ordine degli ingressi sono salvati in `best.pt` e in `results.json`.
 
 Il protocollo evita le fughe di informazione più comuni: prezzi ricampionati all'ultimo valore di ogni periodo (`--period-hours`, predefinito 24), divisione cronologica in training, validazione e test, finestre create dentro ciascun tratto, standardizzazione stimata solo sul training, scelta dell'epoca sulla validazione e test valutato una sola volta. I risultati sono sempre confrontati con due riferimenti: rendimento nullo ("il prezzo resta quello di oggi") e rendimento medio del training. Battere questi riferimenti sul test è la condizione minima per considerare utile un modello; costi di transazione e spread non sono ancora inclusi. Ogni esecuzione salva `best.pt` e `results.json` in `outputs/timeseries_<timestamp>/`.
 
@@ -454,6 +456,8 @@ Il secondo viewer usa una cella non addestrata su CPU e mostra ingresso, stati d
 | `visualization/neuron_connections.py` | Selezione del neurone e connessioni ricorrenti per strength o conduttanza |
 | `checks/check_*.py` | Script di controllo, raccolti anche da `tests/` |
 | `timeseries/prices.py` | Lettura di prezzi da CSV o ARFF e ricampionamento all'ultimo prezzo del periodo |
+| `timeseries/calendar.py` | Calendari `continuous`/`weekdays`, tratti senza dati mancanti e durata fra osservazioni |
+| `timeseries/dataset.py` | Rendimenti e durate per tratto, divisione cronologica e finestre a due ingressi |
 | `timeseries/windows.py` | Rendimenti logaritmici, divisione cronologica, walk-forward, standardizzazione e finestre |
 | `timeseries/model.py`, `timeseries/evaluation.py` | Previsore LTC del rendimento successivo, metriche e riferimenti |
 | `experiments/train_timeseries.py` | Training e confronto con i riferimenti su validazione e test |

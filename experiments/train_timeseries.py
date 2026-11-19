@@ -22,6 +22,7 @@ from timeseries.evaluation import baseline_predictions, predict, regression_repo
 from timeseries.model import ReturnForecaster
 from timeseries.prices import iter_arff_prices, iter_csv_prices, resample_last
 from timeseries.windows import Standardizer
+from training.checkpoint import save_atomically
 from training.epoch import train_epoch
 from training.metrics_log import MetricsLog
 
@@ -170,6 +171,13 @@ def main():
     )
     print("Metriche dal vivo:", directory / "metrics.csv", flush=True)
 
+    # Il miglior modello va su disco appena migliora: un'interruzione non lo perde.
+    checkpoint = {
+        "config": asdict(config), "dt": args.dt, "lookback": args.lookback,
+        "standardizer": asdict(scaler), "calendar": args.calendar,
+        "period_hours": args.period_hours, "max_skipped": args.max_skipped,
+        "inputs": INPUTS,
+    }
     best_loss = float("inf")
     best_epoch = 0
     best_state = copy.deepcopy(model.state_dict())
@@ -193,6 +201,8 @@ def main():
             best_loss = validation_loss
             best_epoch = epoch
             best_state = copy.deepcopy(model.state_dict())
+            save_atomically({**checkpoint, "model_state_dict": best_state, "epoch": epoch,
+                             "validation_loss": validation_loss}, directory / "best.pt")
 
     # Il test viene valutato una sola volta, con il modello scelto sulla validazione.
     model.load_state_dict(best_state)
@@ -222,20 +232,6 @@ def main():
         "device": str(device),
     }
 
-    torch.save(
-        {
-            "model_state_dict": best_state,
-            "config": asdict(config),
-            "dt": args.dt,
-            "lookback": args.lookback,
-            "standardizer": asdict(scaler),
-            "calendar": args.calendar,
-            "period_hours": args.period_hours,
-            "max_skipped": args.max_skipped,
-            "inputs": INPUTS,
-        },
-        directory / "best.pt",
-    )
     (directory / "results.json").write_text(
         json.dumps(
             {"protocol": protocol, "results": results}, indent=2, allow_nan=False,

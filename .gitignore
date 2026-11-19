@@ -7,6 +7,8 @@
 
 # Modelli e risultati locali
 /outputs/
+# Dati di mercato scaricati: licenze dei fornitori, non ridistribuire
+/data/raw/
 
 # Python: cache e artefatti generati
 __pycache__/

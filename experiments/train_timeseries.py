@@ -23,6 +23,7 @@ from timeseries.model import ReturnForecaster
 from timeseries.prices import iter_arff_prices, iter_csv_prices, resample_last
 from timeseries.windows import Standardizer
 from training.epoch import train_epoch
+from training.metrics_log import MetricsLog
 
 
 # Ordine degli ingressi della LTC, salvato in protocollo e checkpoint.
@@ -159,24 +160,34 @@ def main():
     print(f"Tratti senza dati mancanti ({args.calendar}): {len(segments)}")
     print("Finestre:", {name: len(data[1]) for name, data in datasets.items()})
 
+    run_name = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S_%fZ")
+    directory = Path("outputs") / f"timeseries_{run_name}"
+    directory.mkdir(parents=True, exist_ok=False)
+    # Riferimento: prevedere sempre la media del training (0 standardizzato).
+    metrics = MetricsLog(
+        directory / "metrics.csv",
+        validation_baseline=validation_targets.pow(2).mean().item(),
+    )
+    print("Metriche dal vivo:", directory / "metrics.csv", flush=True)
+
     best_loss = float("inf")
     best_epoch = 0
     best_state = copy.deepcopy(model.state_dict())
 
     for epoch in range(args.epochs + 1):
+        train_loss = None
         if epoch > 0:
-            train_epoch(
+            train_loss = train_epoch(
                 model, optimizer, loss_function,
                 training_inputs, training_targets,
                 dt=args.dt, batch_size=args.batch_size,
             )
 
-        if epoch % 10 != 0 and epoch != args.epochs:
-            continue
-
         predictions = predict(model, validation_inputs, dt=args.dt)
         validation_loss = loss_function(predictions, validation_targets).item()
-        print(f"Epoca {epoch:4d} | val mse (standardizzato) {validation_loss:.4f}")
+        metrics.write(epoch, train_loss, validation_loss)
+        if epoch % 10 == 0 or epoch == args.epochs:
+            print(f"Epoca {epoch:4d} | val mse (standardizzato) {validation_loss:.4f}", flush=True)
 
         if validation_loss < best_loss:
             best_loss = validation_loss
@@ -193,10 +204,6 @@ def main():
         )
         for name in ("validation", "test")
     }
-
-    run_name = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S_%fZ")
-    directory = Path("outputs") / f"timeseries_{run_name}"
-    directory.mkdir(parents=True, exist_ok=False)
 
     protocol = {
         "source": str(args.csv or args.arff),

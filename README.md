@@ -134,7 +134,25 @@ python -m experiments.train_timeseries --csv prezzi.csv --time-column Date --pri
 
 `--calendar` indica quali periodi sono attesi: `continuous` (predefinito) li attende tutti, come per le cripto; `weekdays` richiede periodi di un giorno e considera chiusi sabato e domenica, ma non conosce le festività. Un periodo atteso senza dati spezza la serie in tratti: rendimenti e finestre non attraversano mai un'interruzione. `--max-skipped N` (predefinito 0) è una tolleranza esplicita: fino a N periodi attesi mancanti non spezzano la serie, per esempio `1` per tollerare le festività con `weekdays`, sapendo che così viene tollerato anche un singolo giorno di dati persi; la durata ne tiene conto. Calendario, `max_skipped` e ordine degli ingressi sono salvati in `best.pt` e in `results.json`.
 
-Il protocollo evita le fughe di informazione più comuni: prezzi ricampionati all'ultimo valore di ogni periodo (`--period-hours`, predefinito 24), divisione cronologica in training, validazione e test, finestre create dentro ciascun tratto, standardizzazione stimata solo sul training, scelta dell'epoca sulla validazione e test valutato una sola volta. I risultati sono sempre confrontati con due riferimenti: rendimento nullo ("il prezzo resta quello di oggi") e rendimento medio del training. Battere questi riferimenti sul test è la condizione minima per considerare utile un modello; costi di transazione e spread non sono ancora inclusi. Ogni esecuzione salva `best.pt` e `results.json` in `outputs/timeseries_<timestamp>/`.
+Il protocollo evita le fughe di informazione più comuni: prezzi ricampionati all'ultimo valore di ogni periodo (`--period-hours`, predefinito 24), divisione cronologica in training, validazione e test, finestre create dentro ciascun tratto, standardizzazione stimata solo sul training, scelta dell'epoca sulla validazione e test valutato una sola volta. I risultati sono sempre confrontati con due riferimenti: rendimento nullo ("il prezzo resta quello di oggi") e rendimento medio del training. Battere questi riferimenti sul test è la condizione minima per considerare utile un modello; costi di transazione e spread non sono ancora inclusi. Ogni esecuzione crea subito `outputs/timeseries_<timestamp>/` con `metrics.csv` (una riga per epoca: loss di training e validazione, secondi, riferimento "prevedi sempre la media"), salva `best.pt` appena la validazione migliora (scrittura atomica) e alla fine `results.json`.
+
+### Flusso di lavoro sui dati reali
+
+```bash
+python -m experiments.download_fred --series SP500                     # ultimi 10 anni, ufficiale
+python -m experiments.download_yahoo --symbol ^GSPC                    # dal 1927; extra [yahoo], lanciato dall'utente
+python -m experiments.data_quality_report --csv data/raw/<file>.csv --calendar weekdays --max-skipped 2 --by-decade
+python -m experiments.plot_timeseries_split --csv data/raw/<file>.csv --calendar weekdays --max-skipped 2
+python -m experiments.train_timeseries --csv data/raw/<file>.csv --calendar weekdays --max-skipped 2 --epochs 20
+python -m experiments.watch_training                                   # in un altro terminale: loss dal vivo
+python -m experiments.compare_timestral --csv data/raw/<file>.csv --calendar weekdays --max-skipped 2
+```
+
+- **Dati** in `data/raw/`, esclusi da Git (licenze dei fornitori). Gli scaricatori salvano file datati, mai sovrascritti, con un `.json` di provenienza (URL o simbolo, data, SHA-256, conteggi); quello di Yahoo scarta la giornata non ancora chiusa. `yfinance` non è un'API ufficiale e le condizioni di Yahoo non prevedono l'accesso automatico: uso personale.
+- **Report di qualità**: per parte e per decennio volatilità, autocorrelazione dei rendimenti, movimento massimo e giorni oltre 4σ. Il test è escluso salvo `--include-test`, per non usarlo nelle scelte.
+- **Confronto con Timestral** (extra `[timestral]`, pesi fissati a una revisione): stesse finestre e stessi obiettivi di test della LTC; mediana con le metriche puntuali, quantili con pinball loss e copertura delle fasce 10–90 e 5–95, contro la distribuzione storica costante del training.
+- **Controllo di sicurezza**: `python -m experiments.make_synthetic_series --phi 0.3` produce una serie AR(1) con una quota nota di rendimento prevedibile (φ²); la LTC deve battere i riferimenti con φ ≠ 0 e non con φ = 0.
+- Primi risultati e loro interpretazione: `.coordination/` (locale) e [appunti](docs/appunti_timeseries.md).
 
 ## Dinamica e forme dei tensori
 

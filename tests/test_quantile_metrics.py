@@ -43,3 +43,16 @@ def test_invalid_inputs_are_rejected(quantiles, levels, targets, options):
             interval_coverage(quantiles, levels, targets, **options)
         else:
             pinball_loss(quantiles, levels, targets)
+
+
+def test_constant_quantiles_repeat_training_quantiles():
+    from timeseries.quantile_metrics import constant_quantiles
+
+    values = torch.arange(1.0, 102.0)  # 1..101: quantile q is 1 + 100 q
+    quantiles = constant_quantiles(values, LEVELS, count=4)
+
+    assert quantiles.shape == (4, 3)
+    torch.testing.assert_close(quantiles[2], torch.tensor([11.0, 51.0, 91.0], dtype=torch.float64))
+    # On the training data itself the 10-90 band covers about 80 %.
+    report = interval_coverage(constant_quantiles(values, LEVELS, 101), LEVELS, values, lower=0.1, upper=0.9)
+    assert report["coverage"] == pytest.approx(81 / 101)

@@ -47,3 +47,14 @@ def interval_coverage(
         "coverage": inside.double().mean().item(),
         "mean_width": (high - low).mean().item(),
     }
+
+
+def constant_quantiles(training_values: torch.Tensor, levels, count: int) -> torch.Tensor:
+    """Riferimento: gli stessi quantili storici del training per ogni esempio, [count, Q].
+
+    Non si adatta alla volatilità del momento: un modello utile deve batterlo.
+    """
+    if training_values.ndim != 1 or len(training_values) == 0:
+        raise ValueError("training_values deve avere forma [n] non vuota.")
+    tau = torch.tensor(levels, dtype=torch.float64)
+    return torch.quantile(training_values.double(), tau).expand(count, -1).clone()

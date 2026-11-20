@@ -6,55 +6,29 @@ Esempio (S&P 500 giornaliero; argomenti in experiments/timeseries_args.py):
         --calendar weekdays --max-skipped 2 --epochs 20
 """
 
-import copy
 import json
 from dataclasses import asdict
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 import torch
 from torch import nn
 
 from experiments.timeseries_args import parse_arguments
+from experiments.timeseries_data import load_parts
 from ltc.config import LTCConfig
-from timeseries.calendar import split_segments
-from timeseries.dataset import (
-    make_dataset, returns_by_segment, split_pieces, split_pieces_at, window_targets,
-)
+from timeseries.dataset import make_dataset, window_targets
 from timeseries.evaluation import baseline_predictions, predict, regression_report
 from timeseries.linear_baseline import fit_ar1, window_last_returns
 from timeseries.model import ReturnForecaster
-from timeseries.prices import iter_arff_prices, iter_csv_prices, resample_last
 from timeseries.significance import diebold_mariano_or_unavailable
-from timeseries.windows import Standardizer
 from training.checkpoint import save_atomically
-from training.epoch import train_epoch
+from training.fit import fit_and_select
 from training.metrics_log import MetricsLog
 
 
 # Ordine degli ingressi della LTC, salvato in protocollo e checkpoint.
 INPUTS = ["standardized_return", "elapsed_periods"]
-
-
-def load_series(args):
-    if args.csv is not None:
-        samples = iter_csv_prices(
-            args.csv,
-            time_column=args.time_column or "Date",
-            price_column=args.price_column,
-        )
-    else:
-        samples = iter_arff_prices(
-            args.arff,
-            time_attribute=args.time_column or "Timestamp",
-            price_attribute=args.price_column,
-        )
-
-    return resample_last(samples, period=period_of(args))
-
-
-def period_of(args):
-    return timedelta(hours=args.period_hours)
 
 
 def report_all(name, model, inputs, targets, scaler, args, training_mean, linear):
@@ -99,23 +73,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     print("Lettura e ricampionamento dei prezzi...", flush=True)
-    starts, prices = load_series(args)
-
-    # Dati mancanti spezzano la serie; le chiusure previste dal calendario no.
-    segments = split_segments(
-        starts, prices,
-        period=period_of(args),
-        calendar=args.calendar,
-        max_skipped=args.max_skipped,
-    )
-    pieces = returns_by_segment(segments, period=period_of(args))
-    if args.validation_start is not None:
-        parts = split_pieces_at(pieces, train_start=args.train_start,
-                                validation_start=args.validation_start, test_start=args.test_start)
-    else:
-        parts = split_pieces(pieces, validation_fraction=args.validation_fraction,
-                             test_fraction=args.test_fraction)
-    scaler = Standardizer.fit(torch.cat([piece.returns for piece in parts[0]]))
+    starts, prices, segments, parts, scaler = load_parts(args)
 
     datasets = {
         name: make_dataset(pieces, scaler=scaler, lookback=args.lookback)
@@ -157,31 +115,15 @@ def main():
         "period_hours": args.period_hours, "max_skipped": args.max_skipped,
         "inputs": INPUTS,
     }
-    best_loss = float("inf")
-    best_epoch = 0
-    best_state = copy.deepcopy(model.state_dict())
-
-    for epoch in range(args.epochs + 1):
-        train_loss = None
-        if epoch > 0:
-            train_loss = train_epoch(
-                model, optimizer, loss_function,
-                training_inputs, training_targets,
-                dt=args.dt, batch_size=args.batch_size,
-            )
-
-        predictions = predict(model, validation_inputs, dt=args.dt)
-        validation_loss = loss_function(predictions, validation_targets).item()
-        metrics.write(epoch, train_loss, validation_loss)
-        if epoch % 10 == 0 or epoch == args.epochs:
-            print(f"Epoca {epoch:4d} | val mse (standardizzato) {validation_loss:.4f}", flush=True)
-
-        if validation_loss < best_loss or args.final_epoch:  # con --final-epoch: l'ultima
-            best_loss = validation_loss
-            best_epoch = epoch
-            best_state = copy.deepcopy(model.state_dict())
-            save_atomically({**checkpoint, "model_state_dict": best_state, "epoch": epoch,
-                             "validation_loss": validation_loss}, directory / "best.pt")
+    best_epoch, best_state = fit_and_select(
+        model, optimizer, loss_function,
+        (training_inputs, training_targets), (validation_inputs, validation_targets),
+        dt=args.dt, epochs=args.epochs, batch_size=args.batch_size,
+        final_epoch=args.final_epoch, metrics=metrics, predict=predict,
+        save_best=lambda state, epoch, loss: save_atomically(
+            {**checkpoint, "model_state_dict": state, "epoch": epoch, "validation_loss": loss},
+            directory / "best.pt"),
+    )
 
     # Il test viene valutato una sola volta, con il modello scelto sulla validazione.
     model.load_state_dict(best_state)

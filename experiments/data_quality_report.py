@@ -27,6 +27,19 @@ def print_row(name, stats, pieces=""):
           f"{100 * stats['extreme_share']:6.2f}%")
 
 
+def decade_runs(pieces) -> dict[int, list[torch.Tensor]]:
+    """Rendimenti per decennio, tenuti in tratti consecutivi (mai attraverso un buco)."""
+    runs = defaultdict(list)
+    for piece in pieces:
+        decades = [time.year // 10 * 10 for time in piece.end_times]
+        start = 0
+        for index in range(1, len(decades) + 1):
+            if index == len(decades) or decades[index] != decades[start]:
+                runs[decades[start]].append(piece.returns[start:index])
+                start = index
+    return runs
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--csv", type=Path, required=True)
@@ -59,20 +72,16 @@ def main():
     print(f"  {'parte':12s} {'giorni':>6} {'pezzi':>6} {'volat.':>8} {'autoc.':>7} "
           f"{'max |r|':>8} {'>4σ':>7}")
     for name, pieces in parts.items():
-        stats = return_stats(torch.cat([piece.returns for piece in pieces]))
+        stats = return_stats([piece.returns for piece in pieces])
         stats["first"], stats["last"] = f"{pieces[0].end_times[0]:%Y-%m-%d}", f"{pieces[-1].end_times[-1]:%Y-%m-%d}"
         report["parts"][name] = stats
         print_row(name, stats, str(len(pieces)))
 
     if args.by_decade:
-        by_decade = defaultdict(list)
-        for pieces in parts.values():
-            for piece in pieces:
-                for value, time in zip(piece.returns.tolist(), piece.end_times):
-                    by_decade[time.year // 10 * 10].append(value)
+        by_decade = decade_runs([piece for pieces in parts.values() for piece in pieces])
         print("  per decennio:")
         for decade in sorted(by_decade):
-            stats = return_stats(torch.tensor(by_decade[decade]))
+            stats = return_stats(by_decade[decade])
             report["decades"][str(decade)] = stats
             print_row(f"{decade}s", stats)
 

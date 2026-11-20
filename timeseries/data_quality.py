@@ -1,29 +1,39 @@
 import torch
 
 
-def return_stats(returns: torch.Tensor) -> dict:
-    """Statistiche di qualità di una serie di rendimenti, per confrontare periodi.
+def return_stats(runs: list[torch.Tensor]) -> dict:
+    """Statistiche di qualità di rendimenti divisi in tratti consecutivi, per confrontare periodi.
 
-    lag1_autocorrelation: quanto il rendimento di oggi somiglia a quello di ieri
-    (positiva = inerzia, negativa = ritorno verso la media).
+    runs: un tensore [n] per tratto; fra un tratto e l'altro c'è un'interruzione,
+    quindi le coppie lag-1 si formano solo DENTRO ciascun tratto.
+    lag1_autocorrelation: Σ (r_t − m)(r_{t+1} − m) sulle coppie interne, diviso
+    Σ (r_t − m)² su tutti i rendimenti (m = media complessiva). Positiva = inerzia,
+    negativa = ritorno verso la media.
     extreme_share: frazione di giorni oltre 4 deviazioni standard del periodo stesso.
     """
-    if returns.ndim != 1 or len(returns) < 3:
-        raise ValueError("Servono almeno tre rendimenti [n].")
+    if not runs or any(run.ndim != 1 for run in runs):
+        raise ValueError("runs deve essere una lista non vuota di tensori [n].")
 
-    values = returns.double()
+    values = torch.cat(runs).double()
+    if len(values) < 3:
+        raise ValueError("Servono almeno tre rendimenti.")
+
+    mean = values.mean()
     std = values.std()
     if not std > 0:
         raise ValueError("Rendimenti costanti: statistiche non definite.")
 
-    centered = values - values.mean()
-    autocorrelation = (centered[:-1] * centered[1:]).sum() / centered.pow(2).sum()
+    pairs = sum(
+        ((run.double()[:-1] - mean) * (run.double()[1:] - mean)).sum()
+        for run in runs if len(run) > 1
+    )
+    centered = values - mean
 
     return {
         "count": len(values),
-        "mean": values.mean().item(),
+        "mean": mean.item(),
         "volatility": std.item(),
-        "lag1_autocorrelation": autocorrelation.item(),
+        "lag1_autocorrelation": (pairs / centered.pow(2).sum()).item(),
         "max_abs": values.abs().max().item(),
         "extreme_share": ((centered.abs() / std) > 4).double().mean().item(),
     }

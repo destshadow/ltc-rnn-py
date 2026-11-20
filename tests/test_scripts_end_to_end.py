@@ -78,3 +78,19 @@ def test_quality_report_hides_the_test_by_default(series, tmp_path, monkeypatch,
 def test_split_plot_is_saved(series, tmp_path, monkeypatch):
     run(monkeypatch, plot_timeseries_split, "--csv", str(series), "--output", "plot.png")
     assert (tmp_path / "plot.png").stat().st_size > 0
+
+
+def test_decade_runs_never_cross_a_gap_or_a_decade():
+    from datetime import datetime, timedelta
+
+    from timeseries.dataset import Piece
+
+    day = timedelta(days=1)
+    first = Piece(torch.tensor([1.0, 2.0, 3.0]), torch.ones(3),
+                  [datetime(1959, 12, 30) + k * day for k in range(3)])   # 30/12/1959 → 01/01/1960
+    second = Piece(torch.tensor([4.0, 5.0]), torch.ones(2),
+                   [datetime(1960, 1, 10) + k * day for k in range(2)])   # after a gap
+
+    runs = data_quality_report.decade_runs([first, second])
+    assert [run.tolist() for run in runs[1950]] == [[1.0, 2.0]]
+    assert [run.tolist() for run in runs[1960]] == [[3.0], [4.0, 5.0]]

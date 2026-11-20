@@ -47,3 +47,13 @@ def test_without_lags_matches_the_plain_t_statistic():
 def test_invalid_inputs_are_rejected(loss_a, loss_b, lags):
     with pytest.raises(ValueError):
         diebold_mariano(loss_a, loss_b, lags=lags)
+
+
+def test_newey_west_scale_on_a_hand_computed_case():
+    # d alternates 0, 2 → centred ±1. With every autocovariance divided by n = 8 and
+    # Bartlett weights for 5 lags the long-run variance is 0.125; mean(d) = 1, so
+    # statistic = 1 / sqrt(0.125 / 8) = 8.
+    loss_a = torch.tensor([0.0, 2.0] * 4)
+    result = diebold_mariano(loss_a, torch.zeros(8), lags=5)
+    assert result["statistic"] == pytest.approx(8.0)
+    assert result["p_value"] == pytest.approx(math.erfc(8 / math.sqrt(2)))

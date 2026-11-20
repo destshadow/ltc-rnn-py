@@ -24,10 +24,12 @@ def diebold_mariano(loss_a: torch.Tensor, loss_b: torch.Tensor, *, lags: int = 5
     count = len(difference)
     centered = difference - difference.mean()
 
-    variance = centered.pow(2).mean()
+    # Newey–West: tutte le autocovarianze divise per lo stesso n (come il ritardo 0),
+    # così la stima con pesi di Bartlett resta non negativa.
+    variance = centered.pow(2).sum() / count
     for lag in range(1, lags + 1):
         weight = 1 - lag / (lags + 1)  # Bartlett
-        variance = variance + 2 * weight * (centered[lag:] * centered[:-lag]).mean()
+        variance = variance + 2 * weight * (centered[lag:] * centered[:-lag]).sum() / count
 
     if not variance > 0:
         raise ValueError("Differenza di errore costante: test non definito.")

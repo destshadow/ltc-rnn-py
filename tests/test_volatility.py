@@ -58,3 +58,19 @@ def test_short_pieces_give_a_clear_error():
     scaler = Standardizer.fit(torch.tensor([0.01, 0.02], dtype=torch.float64))
     with pytest.raises(ValueError, match="abbastanza lungo"):
         volatility_dataset([piece([0.01] * 4)], scaler=scaler, lookback=3, horizon=2)
+
+
+def test_log_ratio_round_trip_and_zero_correction_is_persistence():
+    from timeseries.volatility import from_log_ratio, to_log_ratio
+
+    targets = torch.tensor([0.01, 0.03, 0.02], dtype=torch.float64)
+    persistence = torch.tensor([0.02, 0.01, 0.02], dtype=torch.float64)
+    ratio = to_log_ratio(targets, persistence)
+
+    torch.testing.assert_close(ratio, torch.log(targets / persistence))
+    torch.testing.assert_close(from_log_ratio(ratio, persistence), targets)
+    torch.testing.assert_close(from_log_ratio(torch.zeros(3), persistence), persistence)
+    # A zero window does not produce infinities.
+    assert torch.isfinite(to_log_ratio(torch.zeros(1), torch.zeros(1))).all()
+    with pytest.raises(ValueError):
+        to_log_ratio(targets, persistence[:2])

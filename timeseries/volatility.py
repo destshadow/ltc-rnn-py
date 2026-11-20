@@ -44,3 +44,22 @@ def volatility_dataset(
         raise ValueError("Nessun pezzo abbastanza lungo per lookback + horizon.")
 
     return torch.cat(inputs).float(), torch.cat(targets), torch.cat(persistence)
+
+
+# Pavimento per evitare log(0) se una finestra ha solo rendimenti nulli.
+VOLATILITY_FLOOR = 1e-8
+
+
+def to_log_ratio(targets: torch.Tensor, persistence: torch.Tensor) -> torch.Tensor:
+    """Obiettivo come correzione della persistenza: log(volatilità futura / persistenza)."""
+    if targets.shape != persistence.shape:
+        raise ValueError("targets e persistence devono avere la stessa forma.")
+    return torch.log(targets.double().clamp_min(VOLATILITY_FLOOR)) - torch.log(
+        persistence.double().clamp_min(VOLATILITY_FLOOR))
+
+
+def from_log_ratio(log_ratio: torch.Tensor, persistence: torch.Tensor) -> torch.Tensor:
+    """Previsione = persistenza × e^(correzione): i picchi li segue la persistenza."""
+    if log_ratio.shape != persistence.shape:
+        raise ValueError("log_ratio e persistence devono avere la stessa forma.")
+    return persistence.double().clamp_min(VOLATILITY_FLOOR) * torch.exp(log_ratio.double())

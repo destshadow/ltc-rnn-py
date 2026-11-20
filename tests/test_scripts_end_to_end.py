@@ -286,3 +286,14 @@ def test_volatility_run_is_saved_with_a_single_test_window(series, tmp_path, mon
     assert test["ltc"]["tail"]["tail_count"] == 1 and test["ltc"]["tail"]["rest_mse"] is None
     assert all(value["p_value"] is None for value in test["ltc_significance"].values())
     assert (directory / "predictions.pt").is_file()
+
+
+def test_cell_benchmark_reports_both_cells(monkeypatch, capsys):
+    from experiments import benchmark_cells
+
+    run(monkeypatch, benchmark_cells, "--steps", "2", "--batch", "4", "--repeats", "2")
+    results = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+
+    names = {key.split(" | ")[0] for key in results}
+    assert names == {"ltc (6 sottopassi)", "cfc"}
+    assert all(value["single_step_ms"] > 0 and value["sequence_ms"] > 0 for value in results.values())

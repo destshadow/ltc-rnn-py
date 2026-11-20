@@ -23,6 +23,9 @@ def return_stats(runs: list[torch.Tensor]) -> dict:
     if not std > 0:
         raise ValueError("Rendimenti costanti: statistiche non definite.")
 
+    # Senza nessuna coppia consecutiva l'autocorrelazione non è stimabile (non è 0).
+    if all(len(run) < 2 for run in runs):
+        raise ValueError("Nessuna coppia di rendimenti consecutivi: autocorrelazione non stimabile.")
     pairs = sum(
         ((run.double()[:-1] - mean) * (run.double()[1:] - mean)).sum()
         for run in runs if len(run) > 1

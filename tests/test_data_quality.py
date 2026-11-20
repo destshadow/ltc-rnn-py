@@ -39,3 +39,15 @@ def test_no_lag1_pair_across_a_gap():
 
     assert separated == pytest.approx(-2 / 4)       # two inner pairs of −1, Σ squares = 4
     assert joined == pytest.approx((-1 + 1 - 1) / 4)  # includes the pair across the gap
+
+
+def test_singleton_runs_are_not_reported_as_zero_autocorrelation():
+    from experiments.data_quality_report import safe_stats
+
+    runs = [torch.tensor([0.01]), torch.tensor([-0.02]), torch.tensor([0.03])]
+    with pytest.raises(ValueError, match="coppia"):
+        return_stats(runs)
+
+    stats = safe_stats(runs)
+    assert stats["count"] == 3
+    assert "lag1_autocorrelation" not in stats and "coppia" in stats["unavailable"]

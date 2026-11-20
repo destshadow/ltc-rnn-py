@@ -18,7 +18,9 @@ from torch import nn
 from experiments.timeseries_args import parse_arguments
 from ltc.config import LTCConfig
 from timeseries.calendar import split_segments
-from timeseries.dataset import make_dataset, returns_by_segment, split_pieces, window_targets
+from timeseries.dataset import (
+    make_dataset, returns_by_segment, split_pieces, split_pieces_at, window_targets,
+)
 from timeseries.evaluation import baseline_predictions, predict, regression_report
 from timeseries.model import ReturnForecaster
 from timeseries.prices import iter_arff_prices, iter_csv_prices, resample_last
@@ -91,11 +93,13 @@ def main():
         calendar=args.calendar,
         max_skipped=args.max_skipped,
     )
-    parts = split_pieces(
-        returns_by_segment(segments, period=period_of(args)),
-        validation_fraction=args.validation_fraction,
-        test_fraction=args.test_fraction,
-    )
+    pieces = returns_by_segment(segments, period=period_of(args))
+    if args.validation_start is not None:
+        parts = split_pieces_at(pieces, train_start=args.train_start,
+                                validation_start=args.validation_start, test_start=args.test_start)
+    else:
+        parts = split_pieces(pieces, validation_fraction=args.validation_fraction,
+                             test_fraction=args.test_fraction)
     scaler = Standardizer.fit(torch.cat([piece.returns for piece in parts[0]]))
 
     datasets = {
@@ -180,7 +184,7 @@ def main():
     protocol = {
         "source": str(args.csv or args.arff),
         "arguments": {
-            key: str(value) if isinstance(value, Path) else value
+            key: value if value is None or isinstance(value, (bool, int, float, str)) else str(value)
             for key, value in vars(args).items()
         },
         "periods": len(prices),

@@ -415,3 +415,32 @@ def test_window_targets_keep_exact_zeros_and_match_make_dataset():
     report = regression_report(torch.full_like(targets, 0.01), targets)
     hits = (targets > 0).sum().item()
     assert report["direction_accuracy"] == pytest.approx(hits / 5)
+
+
+def test_split_at_dates_keeps_the_same_validation_for_different_training_starts():
+    from timeseries.dataset import split_pieces_at
+
+    starts, prices = daily_series()          # 100 days from 2024-01-01, day 50 missing
+    pieces = returns_by_segment(split_segments(starts, prices, period=DAY, calendar="continuous"),
+                                period=DAY)
+    dates = {"validation_start": datetime(2024, 3, 1), "test_start": datetime(2024, 3, 21)}
+
+    full = split_pieces_at(pieces, **dates)
+    recent = split_pieces_at(pieces, train_start=datetime(2024, 2, 1), **dates)
+
+    def ends(part):
+        return [time for piece in part for time in piece.end_times]
+
+    assert min(ends(full[0])) == datetime(2024, 1, 2)
+    assert min(ends(recent[0])) == datetime(2024, 2, 1)
+    assert max(ends(full[0])) < dates["validation_start"] <= min(ends(full[1]))
+    assert max(ends(full[1])) < dates["test_start"] <= min(ends(full[2]))
+    for index in (1, 2):                      # identical validation and test
+        assert ends(full[index]) == ends(recent[index])
+        torch.testing.assert_close(torch.cat([p.returns for p in full[index]]),
+                                   torch.cat([p.returns for p in recent[index]]))
+
+    with pytest.raises(ValueError, match="precedere"):
+        split_pieces_at(pieces, validation_start=dates["test_start"], test_start=dates["validation_start"])
+    with pytest.raises(ValueError, match="vuota"):
+        split_pieces_at(pieces, validation_start=datetime(2024, 3, 1), test_start=datetime(2030, 1, 1))

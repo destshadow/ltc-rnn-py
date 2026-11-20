@@ -76,23 +76,48 @@ def split_pieces(
         validation_fraction=validation_fraction,
         test_fraction=test_fraction,
     )
-    validation_start = end_times[len(training)]
-    test_start = end_times[len(training) + len(validation)]
+    return split_pieces_at(
+        pieces,
+        validation_start=end_times[len(training)],
+        test_start=end_times[len(training) + len(validation)],
+    )
+
+
+def split_pieces_at(
+    pieces: list[Piece],
+    *,
+    validation_start: datetime,
+    test_start: datetime,
+    train_start: datetime | None = None,
+) -> tuple[list[Piece], list[Piece], list[Piece]]:
+    """Divisione cronologica a date fisse: training < validation_start <= validazione < test_start <= test.
+
+    Un rendimento appartiene alla parte in cui cade la fine del suo intervallo;
+    con train_start, i rendimenti precedenti sono esclusi dal training.
+    Così varianti diverse del training si confrontano sulla stessa validazione.
+    """
+    if not validation_start < test_start:
+        raise ValueError("validation_start deve precedere test_start.")
+    if train_start is not None and not train_start < validation_start:
+        raise ValueError("train_start deve precedere validation_start.")
 
     parts = ([], [], [])
     for piece in pieces:
         times = piece.end_times
+        first_training = 0 if train_start is None else sum(time < train_start for time in times)
         first_validation = sum(time < validation_start for time in times)
         first_test = sum(time < test_start for time in times)
 
         for part, (start, stop) in zip(parts, (
-            (0, first_validation),
+            (first_training, first_validation),
             (first_validation, first_test),
             (first_test, len(times)),
         )):
             if stop > start:
                 part.append(_slice(piece, start, stop))
 
+    if not all(parts):
+        raise ValueError("Una delle parti è vuota con le date richieste.")
     return parts
 
 

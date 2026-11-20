@@ -1,6 +1,7 @@
 """Argomenti della riga di comando di experiments.train_timeseries."""
 
 import argparse
+from datetime import datetime
 from pathlib import Path
 
 from timeseries.calendar import CALENDARS
@@ -46,4 +47,15 @@ def parse_arguments(argv=None):
     parser.add_argument("--validation-fraction", type=float, default=0.15)
     parser.add_argument("--test-fraction", type=float, default=0.15)
     parser.add_argument("--seed", type=int, default=42)
-    return parser.parse_args(argv)
+    # Divisione a date fisse (AAAA-MM-GG): sostituisce le frazioni, così varianti
+    # del training si confrontano sulla stessa validazione.
+    parser.add_argument("--train-start", type=datetime.fromisoformat)
+    parser.add_argument("--validation-start", type=datetime.fromisoformat)
+    parser.add_argument("--test-start", type=datetime.fromisoformat)
+    args = parser.parse_args(argv)
+
+    if (args.validation_start is None) != (args.test_start is None):
+        parser.error("--validation-start e --test-start vanno indicate insieme.")
+    if args.train_start is not None and args.validation_start is None:
+        parser.error("--train-start richiede anche --validation-start e --test-start.")
+    return args

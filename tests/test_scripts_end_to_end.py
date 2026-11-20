@@ -114,3 +114,15 @@ def test_partial_or_constant_groups_do_not_stop_the_report(tmp_path, monkeypatch
 
     constant = data_quality_report.safe_stats([torch.ones(10)])
     assert constant["count"] == 10 and "costanti" in constant["unavailable"]
+
+
+def test_training_with_date_split_records_the_dates(series, tmp_path, monkeypatch):
+    run(monkeypatch, train_timeseries, "--csv", str(series), "--epochs", "1", "--lookback", "5",
+        "--hidden-size", "2", "--substeps", "1", "--train-start", "2000-03-01",
+        "--validation-start", "2000-09-01", "--test-start", "2000-11-01")
+
+    report = strict_json(only(tmp_path.glob("outputs/timeseries_*/results.json")))
+    arguments = report["protocol"]["arguments"]
+    assert arguments["train_start"].startswith("2000-03-01")
+    assert arguments["test_start"].startswith("2000-11-01")
+    assert report["results"]["test"]["ltc"]["count"] > 0

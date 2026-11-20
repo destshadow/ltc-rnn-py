@@ -40,3 +40,15 @@ def test_smallest_valid_sizes_are_accepted():
     ])
     assert (args.lookback, args.hidden_size, args.substeps, args.batch_size,
             args.max_skipped) == (1, 1, 1, 1, 0)
+
+
+def test_date_split_options_go_together(capsys):
+    args = parse_arguments(["--csv", "p.csv", "--train-start", "1990-01-01",
+                            "--validation-start", "1997-04-09", "--test-start", "2012-01-27"])
+    assert args.train_start.year == 1990 and args.test_start.month == 1
+
+    for incomplete, message in ((["--validation-start", "1997-04-09"], "insieme"),
+                                (["--train-start", "1990-01-01"], "richiede")):
+        with pytest.raises(SystemExit):
+            parse_arguments(["--csv", "p.csv", *incomplete])
+        assert message in capsys.readouterr().err

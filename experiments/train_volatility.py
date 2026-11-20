@@ -18,10 +18,9 @@ from torch import nn
 
 from experiments.timeseries_args import build_parser, parse_arguments
 from experiments.timeseries_data import load_parts
-from ltc.config import LTCConfig
 from timeseries.dataset import INPUTS
 from timeseries.evaluation import predict, regression_report, tail_split_mse
-from timeseries.model import ReturnForecaster
+from timeseries.model import make_forecaster
 from timeseries.significance import diebold_mariano_or_unavailable
 from timeseries.volatility import from_log_ratio, to_log_ratio, volatility_dataset
 from timeseries.windows import Standardizer
@@ -87,8 +86,11 @@ def main():
     def standardized(name):
         return datasets[name][0], target_scaler.transform(raw_target(name)).float()
 
-    config = LTCConfig(input_size=2, hidden_size=args.hidden_size, substeps=args.substeps)
-    model = ReturnForecaster(config).to(device)
+    config, model = make_forecaster(
+        args.cell, input_size=len(INPUTS), hidden_size=args.hidden_size, substeps=args.substeps,
+        backbone_units=args.backbone_units, elapsed_channel=INPUTS.index("elapsed_periods"),
+    )
+    model = model.to(device)
     training = tuple(tensor.to(device) for tensor in standardized("training"))
     validation = standardized("validation")
     print("Dispositivo:", device, "| tratti:", len(segments),
@@ -99,7 +101,7 @@ def main():
     metrics = MetricsLog(directory / "metrics.csv",
                          validation_baseline=validation[1].double().pow(2).mean().item())
     print("Metriche dal vivo:", directory / "metrics.csv", flush=True)
-    checkpoint = {"config": asdict(config), "dt": args.dt, "lookback": args.lookback,
+    checkpoint = {"config": asdict(config), "cell": args.cell, "dt": args.dt, "lookback": args.lookback,
                   "horizon": args.horizon, "mode": args.mode,
                   "target": "realized_volatility_mean_abs_return",
                   "standardizer": asdict(scaler), "target_standardizer": asdict(target_scaler),

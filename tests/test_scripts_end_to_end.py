@@ -297,3 +297,19 @@ def test_cell_benchmark_reports_both_cells(monkeypatch, capsys):
     names = {key.split(" | ")[0] for key in results}
     assert names == {"ltc (6 sottopassi)", "cfc"}
     assert all(value["single_step_ms"] > 0 and value["sequence_ms"] > 0 for value in results.values())
+
+
+@pytest.mark.parametrize("script", ["train_timeseries", "train_volatility"])
+def test_training_scripts_run_with_the_cfc_cell(series, tmp_path, monkeypatch, script):
+    import importlib
+
+    module = importlib.import_module(f"experiments.{script}")
+    extra = ["--horizon", "3"] if script == "train_volatility" else []
+    run(monkeypatch, module, "--csv", str(series), "--epochs", "1", "--lookback", "6",
+        "--hidden-size", "3", "--cell", "cfc", "--backbone-units", "4", *extra)
+    directory = only([*tmp_path.glob("outputs/timeseries_*"), *tmp_path.glob("outputs/volatility_*")])
+
+    checkpoint = torch.load(directory / "best.pt", weights_only=True)
+    assert checkpoint["cell"] == "cfc" and checkpoint["config"]["backbone_units"] == 4
+    assert any(name.startswith("cell.backbone") for name in checkpoint["model_state_dict"])
+    assert strict_json(directory / "results.json")["results"]["test"]["ltc"]["count"] > 0

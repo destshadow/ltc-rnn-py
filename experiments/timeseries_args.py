@@ -37,6 +37,9 @@ def build_parser(description="Previsione del rendimento successivo con la LTC, c
     )
     parser.add_argument("--lookback", type=positive_int, default=30)
     parser.add_argument("--hidden-size", type=positive_int, default=8)
+    # ltc: solver semi-implicito a passo fisso; cfc: forma chiusa, Δt = dt × durata dell'intervallo.
+    parser.add_argument("--cell", choices=("ltc", "cfc"), default="ltc")
+    parser.add_argument("--backbone-units", type=positive_int, default=64, help="Solo CfC.")
     parser.add_argument("--substeps", type=positive_int, default=6)
     parser.add_argument("--dt", type=float, default=0.1)
     # 0 valuta il modello iniziale senza training; i negativi sono rifiutati.

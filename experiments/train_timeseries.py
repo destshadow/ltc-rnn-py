@@ -16,11 +16,10 @@ from torch import nn
 
 from experiments.timeseries_args import parse_arguments
 from experiments.timeseries_data import load_parts
-from ltc.config import LTCConfig
 from timeseries.dataset import INPUTS, make_dataset, window_targets
 from timeseries.evaluation import baseline_predictions, predict, regression_report
 from timeseries.linear_baseline import fit_ar1, window_last_returns
-from timeseries.model import ReturnForecaster
+from timeseries.model import make_forecaster
 from timeseries.significance import diebold_mariano_or_unavailable
 from training.checkpoint import save_atomically
 from training.fit import fit_and_select
@@ -78,10 +77,11 @@ def main():
     }
 
     # Ingressi: rendimento standardizzato e durata dell'intervallo in periodi.
-    config = LTCConfig(
-        input_size=2, hidden_size=args.hidden_size, substeps=args.substeps
+    config, model = make_forecaster(
+        args.cell, input_size=len(INPUTS), hidden_size=args.hidden_size, substeps=args.substeps,
+        backbone_units=args.backbone_units, elapsed_channel=INPUTS.index("elapsed_periods"),
     )
-    model = ReturnForecaster(config).to(device)
+    model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
     loss_function = nn.MSELoss()
 
@@ -107,7 +107,7 @@ def main():
 
     # Il miglior modello va su disco appena migliora: un'interruzione non lo perde.
     checkpoint = {
-        "config": asdict(config), "dt": args.dt, "lookback": args.lookback,
+        "config": asdict(config), "cell": args.cell, "dt": args.dt, "lookback": args.lookback,
         "standardizer": asdict(scaler), "calendar": args.calendar,
         "period_hours": args.period_hours, "max_skipped": args.max_skipped,
         "inputs": INPUTS,

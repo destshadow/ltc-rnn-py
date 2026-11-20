@@ -49,6 +49,7 @@ def test_weight_names_match_the_authors_cell():
 
 @pytest.mark.parametrize("inputs,state,dt", [
     (torch.randn(4, 2), torch.zeros(4, 5), 0.1),         # wrong input size
+    (torch.tensor(1.0), torch.zeros(1, 5), 0.1),         # scalar input
     (torch.randn(4, 3), torch.zeros(3, 5), 0.1),         # wrong batch in state
     (torch.randn(4, 3), torch.zeros(4, 5), -0.1),        # negative Δt
     (torch.randn(4, 3), torch.zeros(4, 5), torch.ones(3)),

@@ -12,8 +12,10 @@ from ltc.sequence import run_sequence
 class ReturnForecaster(nn.Module):
     """Stima il prossimo valore della serie dallo stato finale di una LTC o di una CfC.
 
-    Con la CfC il tempo è continuo davvero: il Δt di ogni passo è dt moltiplicato per
-    l'ingresso `elapsed_channel` (la durata dell'intervallo), invece di un passo fisso.
+    Con la CfC il Δt di ogni passo è dt moltiplicato per l'ingresso `elapsed_channel`
+    (la durata dell'intervallo), invece di un passo fisso. Supporta intervalli variabili;
+    la formula NON garantisce stato invariato a Δt = 0 né che un passo lungo equivalga
+    a più passi brevi.
     """
 
     def __init__(self, config: LTCConfig | CfcConfig, *, elapsed_channel: int | None = None):

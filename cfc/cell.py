@@ -46,9 +46,9 @@ class CfcCell(nn.Module):
 
     def forward(self, inputs: torch.Tensor, state: torch.Tensor, *, dt) -> torch.Tensor:
         """inputs [batch, ingressi], state [batch, neuroni]; dt numero o tensore [batch]."""
-        batch = inputs.shape[0]
         if inputs.ndim != 2 or inputs.shape[1] != self.config.input_size:
             raise ValueError("inputs deve avere forma [batch, input_size].")
+        batch = inputs.shape[0]
         if state.shape != (batch, self.config.hidden_size):
             raise ValueError("state deve avere forma [batch, hidden_size].")
 

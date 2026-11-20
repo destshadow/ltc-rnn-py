@@ -19,6 +19,7 @@ from torch import nn
 from experiments.timeseries_args import build_parser, parse_arguments
 from experiments.timeseries_data import load_parts
 from ltc.config import LTCConfig
+from timeseries.dataset import INPUTS
 from timeseries.evaluation import predict, regression_report, tail_split_mse
 from timeseries.model import ReturnForecaster
 from timeseries.significance import diebold_mariano_or_unavailable
@@ -101,7 +102,10 @@ def main():
     checkpoint = {"config": asdict(config), "dt": args.dt, "lookback": args.lookback,
                   "horizon": args.horizon, "mode": args.mode,
                   "target": "realized_volatility_mean_abs_return",
-                  "standardizer": asdict(scaler), "target_standardizer": asdict(target_scaler)}
+                  "standardizer": asdict(scaler), "target_standardizer": asdict(target_scaler),
+                  # Contratto temporale: serve a ricostruire finestre e durate dai soli prezzi.
+                  "period_hours": args.period_hours, "calendar": args.calendar,
+                  "max_skipped": args.max_skipped, "inputs": INPUTS}
 
     best_epoch, best_state = fit_and_select(
         model, torch.optim.Adam(model.parameters(), lr=args.learning_rate), nn.MSELoss(),

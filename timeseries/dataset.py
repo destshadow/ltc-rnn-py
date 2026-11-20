@@ -7,6 +7,10 @@ from .calendar import elapsed_periods
 from .windows import Standardizer, chronological_split, log_returns, make_windows
 
 
+# Ordine degli ingressi delle finestre (make_dataset, volatility_dataset).
+INPUTS = ["standardized_return", "elapsed_periods"]
+
+
 @dataclass(frozen=True)
 class Piece:
     """Rendimenti contigui: nessuna interruzione e un'unica parte della divisione.

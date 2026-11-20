@@ -17,7 +17,7 @@ from torch import nn
 from experiments.timeseries_args import parse_arguments
 from experiments.timeseries_data import load_parts
 from ltc.config import LTCConfig
-from timeseries.dataset import make_dataset, window_targets
+from timeseries.dataset import INPUTS, make_dataset, window_targets
 from timeseries.evaluation import baseline_predictions, predict, regression_report
 from timeseries.linear_baseline import fit_ar1, window_last_returns
 from timeseries.model import ReturnForecaster
@@ -26,9 +26,6 @@ from training.checkpoint import save_atomically
 from training.fit import fit_and_select
 from training.metrics_log import MetricsLog
 
-
-# Ordine degli ingressi della LTC, salvato in protocollo e checkpoint.
-INPUTS = ["standardized_return", "elapsed_periods"]
 
 
 def report_all(name, model, inputs, targets, scaler, args, training_mean, linear):

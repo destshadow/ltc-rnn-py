@@ -234,8 +234,10 @@ def test_summarize_runs_handles_reports_in_the_old_format(series, tmp_path, monk
 def test_volatility_training_end_to_end(series, tmp_path, monkeypatch):
     from experiments import train_volatility
 
+    # Calendar options passed explicitly, to check that the checkpoint records them.
     run(monkeypatch, train_volatility, "--csv", str(series), "--epochs", "2", "--lookback", "6",
-        "--hidden-size", "2", "--substeps", "1", "--horizon", "3")
+        "--hidden-size", "2", "--substeps", "1", "--horizon", "3",
+        "--calendar", "continuous", "--max-skipped", "1", "--period-hours", "24")
     directory = only(tmp_path.glob("outputs/volatility_*"))
 
     report = strict_json(directory / "results.json")
@@ -245,6 +247,10 @@ def test_volatility_training_end_to_end(series, tmp_path, monkeypatch):
     assert report["protocol"]["arguments"]["horizon"] == 3
     checkpoint = torch.load(directory / "best.pt", weights_only=True)
     assert checkpoint["horizon"] == 3 and "target_standardizer" in checkpoint
+    assert checkpoint["mode"] == "level" and "standardizer" in checkpoint
+    assert (checkpoint["period_hours"], checkpoint["calendar"], checkpoint["max_skipped"]) == (
+        24.0, "continuous", 1)
+    assert checkpoint["inputs"] == ["standardized_return", "elapsed_periods"]
 
     predictions = torch.load(directory / "predictions.pt", weights_only=True)
     assert (predictions["test"]["targets"] >= 0).all()

@@ -16,6 +16,8 @@ dev = ["pytest>=8,<10"]
 timestral = ["timestral @ git+https://github.com/mistralai/timestral.git@a534bdbd244d64f3d9d743f46c7bf6fc330ed4ff"]
 # Download storico da Yahoo Finance (non ufficiale): experiments/download_yahoo.py.
 yahoo = ["yfinance"]
+# Implementazione degli autori di CfC/LTC, per tests/test_cfc_authors.py.
+authors = ["ncps"]
 
 [tool.setuptools.packages.find]
 where = ["."]

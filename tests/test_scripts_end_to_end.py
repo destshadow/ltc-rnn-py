@@ -229,3 +229,22 @@ def test_summarize_runs_handles_reports_in_the_old_format(series, tmp_path, monk
     summary = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
     assert summary["validation"]["skipped_runs"] == 1        # old run lacks linear_ar1
     assert summarize_runs.summarize(old, "training_mean", "test")["selection"] == "validazione"
+
+
+def test_volatility_training_end_to_end(series, tmp_path, monkeypatch):
+    from experiments import train_volatility
+
+    run(monkeypatch, train_volatility, "--csv", str(series), "--epochs", "2", "--lookback", "6",
+        "--hidden-size", "2", "--substeps", "1", "--horizon", "3")
+    directory = only(tmp_path.glob("outputs/volatility_*"))
+
+    report = strict_json(directory / "results.json")
+    test = report["results"]["test"]
+    assert set(test) == {"ltc", "persistence", "training_mean", "ltc_significance"}
+    assert report["protocol"]["arguments"]["horizon"] == 3
+    checkpoint = torch.load(directory / "best.pt", weights_only=True)
+    assert checkpoint["horizon"] == 3 and "target_standardizer" in checkpoint
+
+    predictions = torch.load(directory / "predictions.pt", weights_only=True)
+    assert (predictions["test"]["targets"] >= 0).all()
+    assert len(predictions["test"]["ltc"]) == test["ltc"]["count"]

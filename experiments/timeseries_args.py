@@ -21,10 +21,9 @@ def positive_int(text):
     return value
 
 
-def parse_arguments(argv=None):
-    parser = argparse.ArgumentParser(
-        description="Previsione del rendimento successivo con la LTC, confrontata con i riferimenti."
-    )
+def build_parser(description="Previsione del rendimento successivo con la LTC, confrontata con i riferimenti."):
+    """Opzioni comuni agli script di training; ogni script può aggiungerne altre."""
+    parser = argparse.ArgumentParser(description=description)
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--csv", type=Path, help="CSV con intestazione.")
     source.add_argument("--arff", type=Path, help="File ARFF, es. Bitstamp.")
@@ -55,6 +54,12 @@ def parse_arguments(argv=None):
     parser.add_argument("--train-start", type=datetime.fromisoformat)
     parser.add_argument("--validation-start", type=datetime.fromisoformat)
     parser.add_argument("--test-start", type=datetime.fromisoformat)
+    return parser
+
+
+def parse_arguments(argv=None, parser=None):
+    """Legge e controlla gli argomenti; `parser` permette opzioni aggiuntive."""
+    parser = parser or build_parser()
     args = parser.parse_args(argv)
 
     if (args.validation_start is None) != (args.test_start is None):

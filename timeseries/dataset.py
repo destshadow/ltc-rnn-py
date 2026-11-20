@@ -130,3 +130,15 @@ def make_dataset(
         torch.cat(all_inputs).float(),
         torch.cat(all_targets).float(),
     )
+
+
+def window_targets(pieces: list[Piece], *, lookback: int) -> torch.Tensor:
+    """Rendimenti originali (float64) da prevedere, nello stesso ordine di make_dataset.
+
+    Da usare per le metriche: evita di ricostruirli dagli obiettivi standardizzati
+    in float32, che non conservano esattamente gli zeri (prezzi consecutivi uguali).
+    """
+    targets = [piece.returns[lookback:] for piece in pieces if len(piece.returns) > lookback]
+    if not targets:
+        raise ValueError("Nessun pezzo abbastanza lungo per la finestra richiesta.")
+    return torch.cat(targets).double()

@@ -14,7 +14,7 @@ from pathlib import Path
 import torch
 
 from timeseries.calendar import CALENDARS, split_segments
-from timeseries.dataset import make_dataset, returns_by_segment, split_pieces
+from timeseries.dataset import make_dataset, returns_by_segment, split_pieces, window_targets
 from timeseries.evaluation import baseline_predictions, regression_report
 from timeseries.prices import iter_csv_prices, resample_last
 from timeseries.quantile_metrics import constant_quantiles, interval_coverage, pinball_loss
@@ -61,9 +61,9 @@ def main():
                                      test_fraction=args.test_fraction)
     training_returns = torch.cat([piece.returns for piece in training])
     scaler = Standardizer.fit(training_returns)
-    inputs, targets = make_dataset(test, scaler=scaler, lookback=args.lookback)
+    inputs, _ = make_dataset(test, scaler=scaler, lookback=args.lookback)
     windows = scaler.inverse(inputs[:, :, 0].double()).float()   # rendimenti originali
-    targets = scaler.inverse(targets.double())
+    targets = window_targets(test, lookback=args.lookback)       # stessi obiettivi della LTC
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     forecaster = TimestralForecaster.from_pretrained(

@@ -17,7 +17,7 @@ from torch import nn
 
 from ltc.config import LTCConfig
 from timeseries.calendar import CALENDARS, split_segments
-from timeseries.dataset import make_dataset, returns_by_segment, split_pieces
+from timeseries.dataset import make_dataset, returns_by_segment, split_pieces, window_targets
 from timeseries.evaluation import baseline_predictions, predict, regression_report
 from timeseries.model import ReturnForecaster
 from timeseries.prices import iter_arff_prices, iter_csv_prices, resample_last
@@ -95,8 +95,8 @@ def period_of(args):
 
 def report_all(name, model, inputs, targets, scaler, args, training_mean):
     """Confronta LTC e riferimenti nelle unità originali dei rendimenti."""
-    predictions = scaler.inverse(predict(model, inputs, dt=args.dt))
-    targets = scaler.inverse(targets)
+    # targets: rendimenti originali (window_targets), non ricostruiti dallo scaler.
+    predictions = scaler.inverse(predict(model, inputs, dt=args.dt).double())
 
     results = {"ltc": regression_report(predictions, targets)}
     for baseline, values in baseline_predictions(
@@ -210,9 +210,11 @@ def main():
 
     results = {
         name: report_all(
-            name, model, *datasets[name], scaler, args, scaler.mean
+            name, model, datasets[name][0],
+            window_targets(parts[index], lookback=args.lookback),
+            scaler, args, scaler.mean,
         )
-        for name in ("validation", "test")
+        for index, name in ((1, "validation"), (2, "test"))
     }
 
     protocol = {

@@ -392,3 +392,26 @@ def test_criterion4_split_is_chronological_and_complete():
         for piece in part:
             ends = piece.end_times
             assert all(later - earlier == DAY for earlier, later in zip(ends, ends[1:]))
+
+
+def test_window_targets_keep_exact_zeros_and_match_make_dataset():
+    from timeseries.dataset import window_targets
+
+    # Equal consecutive prices give exact zero returns.
+    starts = [datetime(2024, 1, 1) + k * DAY for k in range(12)]
+    prices = torch.tensor([100, 101, 101, 103, 102, 102, 102, 104, 103, 105, 105, 106],
+                          dtype=torch.float64)
+    pieces = returns_by_segment([(starts, prices)], period=DAY)
+    scaler = Standardizer.fit(pieces[0].returns)
+
+    _, standardized = make_dataset(pieces, scaler=scaler, lookback=3)
+    targets = window_targets(pieces, lookback=3)
+
+    torch.testing.assert_close(targets, pieces[0].returns[3:])
+    torch.testing.assert_close(scaler.inverse(standardized.double()), targets, rtol=0, atol=1e-6)
+    assert (targets == 0).sum() == 3   # zeros preserved exactly
+
+    # The sign denominator counts only non-zero targets: 8 targets, 3 zeros → 5.
+    report = regression_report(torch.full_like(targets, 0.01), targets)
+    hits = (targets > 0).sum().item()
+    assert report["direction_accuracy"] == pytest.approx(hits / 5)

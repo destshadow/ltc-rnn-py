@@ -89,3 +89,24 @@ def baseline_predictions(
         "zero": torch.zeros_like(targets),
         "training_mean": torch.full_like(targets, training_mean),
     }
+
+
+def tail_split_mse(predictions: torch.Tensor, targets: torch.Tensor, *, quantile: float = 0.95) -> dict:
+    """MSE separato fra i giorni con obiettivo più alto (coda) e tutti gli altri.
+
+    Mostra se un errore complessivo viene da pochi giorni estremi (es. crisi).
+    """
+    if predictions.shape != targets.shape or targets.ndim != 1 or len(targets) < 2:
+        raise ValueError("Servono previsioni e obiettivi [n] della stessa forma, n >= 2.")
+    if not 0 < quantile < 1:
+        raise ValueError("quantile deve essere compreso tra 0 e 1.")
+
+    threshold = torch.quantile(targets.double(), quantile)
+    tail = targets.double() >= threshold
+    squared = (predictions.double() - targets.double()) ** 2
+    return {
+        "quantile": quantile,
+        "tail_count": int(tail.sum()),
+        "tail_mse": squared[tail].mean().item(),
+        "rest_mse": squared[~tail].mean().item() if (~tail).any() else None,
+    }

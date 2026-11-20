@@ -19,7 +19,7 @@ from torch import nn
 from experiments.timeseries_args import build_parser, parse_arguments
 from experiments.timeseries_data import load_parts
 from ltc.config import LTCConfig
-from timeseries.evaluation import predict, regression_report
+from timeseries.evaluation import predict, regression_report, tail_split_mse
 from timeseries.model import ReturnForecaster
 from timeseries.significance import diebold_mariano_or_unavailable
 from timeseries.volatility import from_log_ratio, to_log_ratio, volatility_dataset
@@ -39,7 +39,8 @@ def report(name, model, part, target_scaler, args, training_volatility):
         "persistence": persistence,
         "training_mean": torch.full_like(targets, training_volatility),
     }
-    results = {label: regression_report(values, targets) for label, values in forecasts.items()}
+    results = {label: {**regression_report(values, targets), "tail": tail_split_mse(values, targets)}
+               for label, values in forecasts.items()}
     errors = {label: (values - targets) ** 2 for label, values in forecasts.items()}
     # Obiettivi su giorni che si sovrappongono: errori correlati, più ritardi nel test.
     lags = max(5, 2 * args.horizon)

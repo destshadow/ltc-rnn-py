@@ -241,6 +241,7 @@ def test_volatility_training_end_to_end(series, tmp_path, monkeypatch):
     report = strict_json(directory / "results.json")
     test = report["results"]["test"]
     assert set(test) == {"ltc", "persistence", "training_mean", "ltc_significance"}
+    assert test["ltc"]["tail"]["tail_count"] >= 1 and test["persistence"]["tail"]["rest_mse"] >= 0
     assert report["protocol"]["arguments"]["horizon"] == 3
     checkpoint = torch.load(directory / "best.pt", weights_only=True)
     assert checkpoint["horizon"] == 3 and "target_standardizer" in checkpoint

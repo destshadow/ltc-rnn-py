@@ -459,3 +459,17 @@ def test_error_decomposition_and_spread_diagnostics():
     # A constant forecast only shifts the level: its dynamic error is the target variance.
     assert constant["dynamic_error"] == pytest.approx(targets.double().var(unbiased=False).item())
     assert constant["level_error"] == pytest.approx((0.004 - targets.double().mean().item()) ** 2)
+
+
+def test_tail_split_mse_isolates_extreme_days():
+    from timeseries.evaluation import tail_split_mse
+
+    targets = torch.tensor([1.0] * 19 + [10.0])
+    predictions = torch.tensor([1.5] * 19 + [4.0])     # good on normal days, poor on the spike
+    split = tail_split_mse(predictions, targets, quantile=0.95)
+
+    assert split["tail_count"] == 1
+    assert split["tail_mse"] == pytest.approx(36.0)
+    assert split["rest_mse"] == pytest.approx(0.25)
+    with pytest.raises(ValueError):
+        tail_split_mse(predictions, targets, quantile=1.0)

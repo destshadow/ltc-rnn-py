@@ -473,3 +473,8 @@ def test_tail_split_mse_isolates_extreme_days():
     assert split["rest_mse"] == pytest.approx(0.25)
     with pytest.raises(ValueError):
         tail_split_mse(predictions, targets, quantile=1.0)
+
+    single = tail_split_mse(torch.tensor([2.0]), torch.tensor([5.0]))
+    assert single == {"quantile": 0.95, "tail_count": 1, "tail_mse": 9.0, "rest_mse": None}
+    with pytest.raises(ValueError):
+        tail_split_mse(torch.zeros(0), torch.zeros(0))

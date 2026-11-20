@@ -263,3 +263,20 @@ def test_volatility_persistence_ratio_mode(series, tmp_path, monkeypatch):
     # Corrections multiply persistence: forecasts stay positive and finite.
     assert (predictions["ltc"] > 0).all() and torch.isfinite(predictions["ltc"]).all()
     assert strict_json(directory / "results.json")["protocol"]["arguments"]["mode"] == "persistence_ratio"
+
+
+@pytest.mark.parametrize("mode", ["level", "persistence_ratio"])
+def test_volatility_run_is_saved_with_a_single_test_window(series, tmp_path, monkeypatch, mode):
+    from experiments import train_volatility
+
+    # 400 days from 2000-01-01; a test from 2001-01-26 has 9 returns = lookback 6 + horizon 3.
+    run(monkeypatch, train_volatility, "--csv", str(series), "--epochs", "1", "--lookback", "6",
+        "--hidden-size", "2", "--substeps", "1", "--horizon", "3", "--mode", mode,
+        "--validation-start", "2000-09-01", "--test-start", "2001-01-26")
+    directory = only(tmp_path.glob("outputs/volatility_*"))
+
+    test = strict_json(directory / "results.json")["results"]["test"]
+    assert test["ltc"]["count"] == 1
+    assert test["ltc"]["tail"]["tail_count"] == 1 and test["ltc"]["tail"]["rest_mse"] is None
+    assert all(value["p_value"] is None for value in test["ltc_significance"].values())
+    assert (directory / "predictions.pt").is_file()

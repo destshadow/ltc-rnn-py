@@ -96,10 +96,11 @@ def tail_split_mse(predictions: torch.Tensor, targets: torch.Tensor, *, quantile
 
     Mostra se un errore complessivo viene da pochi giorni estremi (es. crisi).
     """
-    if predictions.shape != targets.shape or targets.ndim != 1 or len(targets) < 2:
-        raise ValueError("Servono previsioni e obiettivi [n] della stessa forma, n >= 2.")
+    if predictions.shape != targets.shape or targets.ndim != 1 or len(targets) == 0:
+        raise ValueError("Servono previsioni e obiettivi [n] non vuoti della stessa forma.")
     if not 0 < quantile < 1:
         raise ValueError("quantile deve essere compreso tra 0 e 1.")
+    # Con un solo obiettivo, quello è la coda e non c'è un "resto" (rest_mse None).
 
     threshold = torch.quantile(targets.double(), quantile)
     tail = targets.double() >= threshold

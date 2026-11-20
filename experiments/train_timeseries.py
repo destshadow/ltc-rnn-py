@@ -22,6 +22,7 @@ from timeseries.dataset import (
     make_dataset, returns_by_segment, split_pieces, split_pieces_at, window_targets,
 )
 from timeseries.evaluation import baseline_predictions, predict, regression_report
+from timeseries.linear_baseline import fit_ar1, window_last_returns
 from timeseries.model import ReturnForecaster
 from timeseries.prices import iter_arff_prices, iter_csv_prices, resample_last
 from timeseries.windows import Standardizer
@@ -55,7 +56,7 @@ def period_of(args):
     return timedelta(hours=args.period_hours)
 
 
-def report_all(name, model, inputs, targets, scaler, args, training_mean):
+def report_all(name, model, inputs, targets, scaler, args, training_mean, linear):
     """Confronta LTC e riferimenti nelle unità originali dei rendimenti."""
     # targets: rendimenti originali (window_targets), non ricostruiti dallo scaler.
     predictions = scaler.inverse(predict(model, inputs, dt=args.dt).double())
@@ -65,6 +66,8 @@ def report_all(name, model, inputs, targets, scaler, args, training_mean):
         targets, training_mean=training_mean
     ).items():
         results[baseline] = regression_report(values, targets)
+    slope, intercept, last_returns = linear  # riferimento lineare r_{t+1} = a·r_t + b
+    results["linear_ar1"] = regression_report(slope * last_returns + intercept, targets)
 
     print(f"\n{name} ({len(targets)} finestre)")
     for label, values in results.items():
@@ -172,11 +175,14 @@ def main():
     model.load_state_dict(best_state)
     print(f"\nMigliore epoca sulla validazione: {best_epoch}")
 
+    ar1 = fit_ar1(parts[0])  # stimato solo sul training
+    print(f"Riferimento lineare: r(t+1) = {ar1[0]:+.4f}·r(t) {ar1[1]:+.2e}")
     results = {
         name: report_all(
             name, model, datasets[name][0],
             window_targets(parts[index], lookback=args.lookback),
             scaler, args, scaler.mean,
+            (*ar1, window_last_returns(parts[index], lookback=args.lookback)),
         )
         for index, name in ((1, "validation"), (2, "test"))
     }

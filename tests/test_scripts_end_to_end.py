@@ -59,7 +59,7 @@ def test_training_writes_metrics_checkpoint_and_strict_report(series, tmp_path, 
     assert checkpoint["validation_loss"] == min(float(row["validation_loss"]) for row in rows)
 
     report = strict_json(directory / "results.json")
-    assert set(report["results"]["test"]) == {"ltc", "zero", "training_mean"}
+    assert set(report["results"]["test"]) == {"ltc", "zero", "training_mean", "linear_ar1"}
     assert report["results"]["test"]["zero"]["direction_accuracy"] is None
     assert not list(directory.glob("*.tmp"))
 

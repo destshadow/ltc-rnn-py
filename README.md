@@ -139,7 +139,7 @@ Il protocollo evita le fughe di informazione più comuni: prezzi ricampionati al
 ### Flusso di lavoro sui dati reali
 
 ```bash
-python -m experiments.download_fred --series SP500                     # ultimi 10 anni, ufficiale
+python -m experiments.download_fred --series SP500                     # ultimi 10 anni, ufficiale (colonne observation_date, SP500)
 python -m experiments.download_yahoo --symbol ^GSPC                    # dal 1927; extra [yahoo], lanciato dall'utente
 python -m experiments.data_quality_report --csv data/raw/<file>.csv --calendar weekdays --max-skipped 2 --by-decade
 python -m experiments.plot_timeseries_split --csv data/raw/<file>.csv --calendar weekdays --max-skipped 2
@@ -151,7 +151,8 @@ python -m experiments.compare_timestral --csv data/raw/<file>.csv --calendar wee
 - **Dati** in `data/raw/`, esclusi da Git (licenze dei fornitori). Gli scaricatori salvano file datati, mai sovrascritti, con un `.json` di provenienza (URL o simbolo, data, SHA-256, conteggi); quello di Yahoo scarta la giornata non ancora chiusa. `yfinance` non è un'API ufficiale e le condizioni di Yahoo non prevedono l'accesso automatico: uso personale.
 - **Report di qualità**: per parte e per decennio volatilità, autocorrelazione dei rendimenti, movimento massimo e giorni oltre 4σ. Il test è escluso salvo `--include-test`, per non usarlo nelle scelte.
 - **Confronto con Timestral** (extra `[timestral]`, pesi fissati a una revisione): stesse finestre e stessi obiettivi di test della LTC; mediana con le metriche puntuali, quantili con pinball loss e copertura delle fasce 10–90 e 5–95, contro la distribuzione storica costante del training.
-- **Controllo di sicurezza**: `python -m experiments.make_synthetic_series --phi 0.3` produce una serie AR(1) con una quota nota di rendimento prevedibile (φ²); la LTC deve battere i riferimenti con φ ≠ 0 e non con φ = 0.
+- **Controllo di sicurezza**: `python -m experiments.make_synthetic_series --phi 0.3` produce una serie AR(1) con una quota nota di rendimento prevedibile (φ²). In aspettativa la LTC batte i riferimenti con φ ≠ 0 e non con φ = 0; un singolo seme non è una garanzia, e il controllo non prova da solo l'assenza di errori.
+- I file FRED vanno letti con `--time-column observation_date --price-column SP500`; quelli di Yahoo usano i valori predefiniti `Date` e `Close`.
 - Primi risultati e loro interpretazione: `.coordination/` (locale) e [appunti](docs/appunti_timeseries.md).
 
 ## Dinamica e forme dei tensori

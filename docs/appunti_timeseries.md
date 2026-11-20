@@ -4,7 +4,7 @@ Appunti dell'autore (2026-11-19), con lo stato attuale nel progetto.
 
 ## Stazionarietà
 - Una serie è **debolmente stazionaria** se media e varianza non cambiano nel
-  tempo; **fortemente stazionaria** se non cambia nemmeno la distribuzione
+  tempo e l'autocovarianza dipende solo dal ritardo, non dal momento; **fortemente stazionaria** se non cambia nemmeno la distribuzione
   congiunta delle osservazioni (tutte le statistiche di ordine superiore).
 - Senza stazionarietà il modello deve prevedere in zone di valori che non ha mai
   visto in training: errori sistematici. Normalizzare con statistiche fisse non

@@ -17,7 +17,7 @@ import torch
 
 from timeseries.calendar import CALENDARS, split_segments
 from timeseries.data_quality import return_stats
-from timeseries.dataset import returns_by_segment, split_pieces
+from timeseries.dataset import returns_by_segment, split_pieces, split_pieces_at
 from timeseries.prices import iter_csv_prices, resample_last
 
 
@@ -60,6 +60,9 @@ def main():
     parser.add_argument("--max-skipped", type=int, default=0)
     parser.add_argument("--validation-fraction", type=float, default=0.15)
     parser.add_argument("--test-fraction", type=float, default=0.15)
+    parser.add_argument("--train-start", type=datetime.fromisoformat)
+    parser.add_argument("--validation-start", type=datetime.fromisoformat)
+    parser.add_argument("--test-start", type=datetime.fromisoformat)
     parser.add_argument("--include-test", action="store_true")
     parser.add_argument("--by-decade", action="store_true", help="Anche per decennio (solo fuori dal test).")
     args = parser.parse_args()
@@ -71,10 +74,16 @@ def main():
     )
     segments = split_segments(starts, prices, period=day, calendar=args.calendar,
                               max_skipped=args.max_skipped)
-    parts = dict(zip(("training", "validation", "test"), split_pieces(
-        returns_by_segment(segments, period=day),
-        validation_fraction=args.validation_fraction, test_fraction=args.test_fraction,
-    )))
+    pieces = returns_by_segment(segments, period=day)
+    if (args.validation_start is None) != (args.test_start is None):
+        parser.error("--validation-start e --test-start vanno indicate insieme.")
+    if args.validation_start is not None:  # stesse date di train_timeseries
+        split = split_pieces_at(pieces, train_start=args.train_start,
+                                validation_start=args.validation_start, test_start=args.test_start)
+    else:
+        split = split_pieces(pieces, validation_fraction=args.validation_fraction,
+                             test_fraction=args.test_fraction)
+    parts = dict(zip(("training", "validation", "test"), split))
     if not args.include_test:
         test_start = parts.pop("test")[0].end_times[0]
 

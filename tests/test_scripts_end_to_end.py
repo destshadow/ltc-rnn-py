@@ -126,3 +126,13 @@ def test_training_with_date_split_records_the_dates(series, tmp_path, monkeypatc
     assert arguments["train_start"].startswith("2000-03-01")
     assert arguments["test_start"].startswith("2000-11-01")
     assert report["results"]["test"]["ltc"]["count"] > 0
+
+
+def test_quality_report_uses_the_same_dates_as_training(series, tmp_path, monkeypatch):
+    run(monkeypatch, data_quality_report, "--csv", str(series), "--train-start", "2000-03-01",
+        "--validation-start", "2000-09-01", "--test-start", "2000-11-01")
+
+    parts = strict_json(only(tmp_path.glob("outputs/data_quality_*/report.json")))["parts"]
+    assert parts["training"]["first"] == "2000-03-01"
+    assert parts["validation"]["first"] == "2000-09-01"
+    assert set(parts) == {"training", "validation"}

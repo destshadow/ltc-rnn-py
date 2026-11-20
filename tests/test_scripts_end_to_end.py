@@ -158,3 +158,13 @@ def test_quality_report_rejects_incomplete_dates_before_reading(tmp_path, monkey
         run(monkeypatch, data_quality_report, "--csv", "missing.csv", *dates)
     assert message in capsys.readouterr().err
     assert not (tmp_path / "outputs").exists()
+
+
+def test_final_epoch_uses_the_last_model_without_validation_choice(series, tmp_path, monkeypatch):
+    run(monkeypatch, train_timeseries, "--csv", str(series), "--epochs", "3", "--lookback", "5",
+        "--hidden-size", "2", "--substeps", "1", "--final-epoch")
+    directory = only(tmp_path.glob("outputs/timeseries_*"))
+
+    assert torch.load(directory / "best.pt", weights_only=True)["epoch"] == 3
+    protocol = strict_json(directory / "results.json")["protocol"]
+    assert protocol["best_epoch"] == 3 and protocol["arguments"]["final_epoch"] is True

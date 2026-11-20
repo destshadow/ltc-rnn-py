@@ -171,7 +171,7 @@ def main():
         if epoch % 10 == 0 or epoch == args.epochs:
             print(f"Epoca {epoch:4d} | val mse (standardizzato) {validation_loss:.4f}", flush=True)
 
-        if validation_loss < best_loss:
+        if validation_loss < best_loss or args.final_epoch:  # con --final-epoch: l'ultima
             best_loss = validation_loss
             best_epoch = epoch
             best_state = copy.deepcopy(model.state_dict())
@@ -180,7 +180,8 @@ def main():
 
     # Il test viene valutato una sola volta, con il modello scelto sulla validazione.
     model.load_state_dict(best_state)
-    print(f"\nMigliore epoca sulla validazione: {best_epoch}")
+    print(f"\nEpoca usata: {best_epoch}"
+          + (" (ultima, --final-epoch)" if args.final_epoch else " (migliore in validazione)"))
 
     ar1 = fit_ar1(parts[0])  # stimato solo sul training
     print(f"Riferimento lineare: r(t+1) = {ar1[0]:+.4f}·r(t) {ar1[1]:+.2e}")

@@ -47,6 +47,9 @@ def parse_arguments(argv=None):
     parser.add_argument("--validation-fraction", type=float, default=0.15)
     parser.add_argument("--test-fraction", type=float, default=0.15)
     parser.add_argument("--seed", type=int, default=42)
+    # Senza scelta dell'epoca sulla validazione: resta una verifica non usata per decidere.
+    parser.add_argument("--final-epoch", action="store_true",
+                        help="Usa il modello dell'ultima epoca invece del migliore in validazione.")
     # Divisione a date fisse (AAAA-MM-GG): sostituisce le frazioni, così varianti
     # del training si confrontano sulla stessa validazione.
     parser.add_argument("--train-start", type=datetime.fromisoformat)

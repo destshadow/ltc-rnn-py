@@ -30,3 +30,37 @@ def test_log_round_trip_and_epoch_zero_without_training(tmp_path):
 def test_missing_runs_are_reported(tmp_path):
     with pytest.raises(FileNotFoundError):
         latest_metrics(tmp_path)
+
+
+def test_monitor_waits_for_the_first_row_then_draws(tmp_path):
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    from experiments.watch_training import draw
+
+    path = tmp_path / "metrics.csv"
+    log = MetricsLog(path, validation_baseline=1.0)   # header only, as right after start
+    figure, axis = plt.subplots()
+
+    draw(axis, read_metrics(path), "run")             # must not fail on an empty log
+    assert "attesa" in axis.get_title()
+
+    log.write(0, None, 1.2)                           # first row arrives, same figure
+    draw(axis, read_metrics(path), "run")
+    assert "epoca 0" in axis.get_title()
+    plt.close(figure)
+
+
+def test_once_on_an_empty_log_saves_a_waiting_plot(tmp_path, monkeypatch):
+    import sys
+
+    from experiments import watch_training
+
+    path = tmp_path / "metrics.csv"
+    MetricsLog(path, validation_baseline=1.0)
+    monkeypatch.setattr(sys, "argv", ["watch_training", "--metrics", str(path), "--once"])
+    watch_training.main()
+
+    assert (tmp_path / "loss.png").stat().st_size > 0

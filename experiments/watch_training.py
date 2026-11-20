@@ -31,6 +31,11 @@ def latest_metrics(root: Path = Path("outputs")) -> Path:
 def draw(axis, metrics, name):
     axis.clear()
     epochs = metrics["epoch"]
+    if not epochs:  # file appena creato: nessuna epoca ancora valutata
+        axis.set_title(f"{name} — in attesa della prima epoca…")
+        axis.text(0.5, 0.5, "In attesa delle metriche", ha="center", va="center",
+                  transform=axis.transAxes)
+        return
     axis.plot(epochs, metrics["train_loss"], label="training")
     axis.plot(epochs, metrics["validation_loss"], label="validazione")
     axis.axhline(metrics["validation_baseline"][0], color="0.4", linestyle="--",

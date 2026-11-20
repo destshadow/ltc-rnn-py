@@ -66,6 +66,11 @@ def main():
     parser.add_argument("--include-test", action="store_true")
     parser.add_argument("--by-decade", action="store_true", help="Anche per decennio (solo fuori dal test).")
     args = parser.parse_args()
+    # Stesse regole di experiments/timeseries_args.py, prima di leggere i dati.
+    if (args.validation_start is None) != (args.test_start is None):
+        parser.error("--validation-start e --test-start vanno indicate insieme.")
+    if args.train_start is not None and args.validation_start is None:
+        parser.error("--train-start richiede anche --validation-start e --test-start.")
 
     day = timedelta(days=1)
     starts, prices = resample_last(
@@ -75,8 +80,6 @@ def main():
     segments = split_segments(starts, prices, period=day, calendar=args.calendar,
                               max_skipped=args.max_skipped)
     pieces = returns_by_segment(segments, period=day)
-    if (args.validation_start is None) != (args.test_start is None):
-        parser.error("--validation-start e --test-start vanno indicate insieme.")
     if args.validation_start is not None:  # stesse date di train_timeseries
         split = split_pieces_at(pieces, train_start=args.train_start,
                                 validation_start=args.validation_start, test_start=args.test_start)

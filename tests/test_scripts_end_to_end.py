@@ -136,3 +136,16 @@ def test_quality_report_uses_the_same_dates_as_training(series, tmp_path, monkey
     assert parts["training"]["first"] == "2000-03-01"
     assert parts["validation"]["first"] == "2000-09-01"
     assert set(parts) == {"training", "validation"}
+
+
+@pytest.mark.parametrize("dates,message", [
+    (["--train-start", "2000-03-01"], "richiede"),
+    (["--validation-start", "2000-09-01"], "insieme"),
+])
+def test_quality_report_rejects_incomplete_dates_before_reading(tmp_path, monkeypatch, capsys,
+                                                               dates, message):
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(SystemExit):   # the CSV does not even exist: rejected before reading
+        run(monkeypatch, data_quality_report, "--csv", "missing.csv", *dates)
+    assert message in capsys.readouterr().err
+    assert not (tmp_path / "outputs").exists()

@@ -22,9 +22,11 @@ def read_metrics(path: Path) -> dict[str, list[float]]:
 
 
 def latest_metrics(root: Path = Path("outputs")) -> Path:
-    candidates = sorted(root.glob("timeseries_*/metrics.csv"), key=lambda path: path.stat().st_mtime)
+    # Training dei rendimenti (timeseries_*) e della volatilità (volatility_*).
+    candidates = sorted([*root.glob("timeseries_*/metrics.csv"), *root.glob("volatility_*/metrics.csv")],
+                        key=lambda path: path.stat().st_mtime)
     if not candidates:
-        raise FileNotFoundError("Nessun outputs/timeseries_*/metrics.csv trovato.")
+        raise FileNotFoundError("Nessun outputs/timeseries_* o volatility_* con metrics.csv.")
     return candidates[-1]
 
 
@@ -39,14 +41,14 @@ def draw(axis, metrics, name):
     axis.plot(epochs, metrics["train_loss"], label="training")
     axis.plot(epochs, metrics["validation_loss"], label="validazione")
     axis.axhline(metrics["validation_baseline"][0], color="0.4", linestyle="--",
-                 label="validazione: prevedere sempre la media")
+                 label="validazione: uscita costante 0 (media dell'obiettivo del training)")
     best = min(range(len(epochs)), key=lambda k: metrics["validation_loss"][k])
     axis.plot(epochs[best], metrics["validation_loss"][best], "o", color="tab:red",
               label=f"migliore validazione (epoca {int(epochs[best])})")
     per_epoch = metrics["seconds"][-1] / max(epochs[-1], 1)
     axis.set_title(f"{name} — epoca {int(epochs[-1])}, {per_epoch:.0f} s/epoca")
     axis.set_xlabel("Epoca")
-    axis.set_ylabel("MSE (rendimenti standardizzati)")
+    axis.set_ylabel("MSE (obiettivo standardizzato)")
     axis.grid(alpha=0.25)
     axis.legend()
 

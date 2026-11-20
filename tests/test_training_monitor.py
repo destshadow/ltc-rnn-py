@@ -64,3 +64,16 @@ def test_once_on_an_empty_log_saves_a_waiting_plot(tmp_path, monkeypatch):
     watch_training.main()
 
     assert (tmp_path / "loss.png").stat().st_size > 0
+
+
+def test_latest_metrics_also_finds_volatility_runs(tmp_path):
+    import os
+
+    older = tmp_path / "timeseries_a" / "metrics.csv"
+    newer = tmp_path / "volatility_b" / "metrics.csv"
+    for path in (older, newer):
+        path.parent.mkdir()
+        MetricsLog(path, validation_baseline=1.0)
+    os.utime(older, (1, 1))   # make the returns run clearly older
+
+    assert latest_metrics(tmp_path) == newer

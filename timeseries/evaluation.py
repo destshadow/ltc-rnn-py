@@ -34,11 +34,13 @@ def regression_report(
     predictions: torch.Tensor,
     targets: torch.Tensor,
 ) -> dict:
-    """Errori e frazione di segni indovinati.
+    """Errori, frazione di segni indovinati e diagnosi dell'errore.
 
     Il segno conta solo dove obiettivo e previsione sono diversi da zero:
     una previsione nulla non sceglie una direzione. Se non ne sceglie mai,
     la metrica è None (null in JSON), non un numero.
+    Diagnosi: mse = level_error + dynamic_error; spread_ratio = oscillazione delle
+    previsioni rispetto agli obiettivi; correlation None se una delle due è costante.
     """
     if predictions.shape != targets.shape or targets.ndim != 1 or len(targets) == 0:
         raise ValueError("Servono previsioni e obiettivi [n] della stessa forma.")
@@ -47,10 +49,24 @@ def regression_report(
     decided = (targets != 0) & (predictions != 0)
     hits = (torch.sign(predictions) == torch.sign(targets)) & decided
 
+    # MSE = livello + dinamica: (media previsioni − media obiettivi)² + varianza degli scarti.
+    level_error = errors.mean().pow(2).item()
+    prediction_std = predictions.double().std(unbiased=False).item()
+    target_std = targets.double().std(unbiased=False).item()
+    correlation = (
+        torch.corrcoef(torch.stack([predictions.double(), targets.double()]))[0, 1].item()
+        if prediction_std > 0 and target_std > 0 else None
+    )
+
     return {
         "count": len(targets),
         "mse": errors.pow(2).mean().item(),
         "mae": errors.abs().mean().item(),
+        "level_error": level_error,
+        "dynamic_error": errors.var(unbiased=False).item(),
+        # Oscillazione relativa: vicino a 0 = previsione quasi costante.
+        "spread_ratio": prediction_std / target_std if target_std > 0 else None,
+        "correlation": correlation,
         "direction_accuracy": (
             hits.sum().item() / decided.sum().item()
             if decided.any().item()

@@ -87,6 +87,9 @@ def report_all(name, model, inputs, targets, scaler, args, training_mean, linear
             + ("n/d" if direction is None else f"{100 * direction:.1f}%") + versus
         )
 
+    spread = results["ltc"]["spread_ratio"]
+    if spread is not None and spread < 0.05:  # soglia di avviso, non un criterio
+        print(f"  attenzione: previsioni LTC quasi costanti (oscillazione {spread:.1%} degli obiettivi)")
     return {**results, "ltc_significance": significance}, forecasts
 
 

@@ -444,3 +444,18 @@ def test_split_at_dates_keeps_the_same_validation_for_different_training_starts(
         split_pieces_at(pieces, validation_start=dates["test_start"], test_start=dates["validation_start"])
     with pytest.raises(ValueError, match="vuota"):
         split_pieces_at(pieces, validation_start=datetime(2024, 3, 1), test_start=datetime(2030, 1, 1))
+
+
+def test_error_decomposition_and_spread_diagnostics():
+    targets = torch.tensor([0.02, -0.01, 0.03, -0.02, 0.01])
+
+    report = regression_report(targets * 0.5 + 0.001, targets)
+    assert report["level_error"] + report["dynamic_error"] == pytest.approx(report["mse"])
+    assert report["spread_ratio"] == pytest.approx(0.5)
+    assert report["correlation"] == pytest.approx(1.0)
+
+    constant = regression_report(torch.full_like(targets, 0.004), targets)
+    assert constant["spread_ratio"] == 0.0 and constant["correlation"] is None
+    # A constant forecast only shifts the level: its dynamic error is the target variance.
+    assert constant["dynamic_error"] == pytest.approx(targets.double().var(unbiased=False).item())
+    assert constant["level_error"] == pytest.approx((0.004 - targets.double().mean().item()) ** 2)

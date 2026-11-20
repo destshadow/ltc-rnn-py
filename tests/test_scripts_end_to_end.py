@@ -94,3 +94,23 @@ def test_decade_runs_never_cross_a_gap_or_a_decade():
     runs = data_quality_report.decade_runs([first, second])
     assert [run.tolist() for run in runs[1950]] == [[1.0, 2.0]]
     assert [run.tolist() for run in runs[1960]] == [[3.0], [4.0, 5.0]]
+
+
+def test_partial_or_constant_groups_do_not_stop_the_report(tmp_path, monkeypatch):
+    from datetime import date, timedelta
+
+    monkeypatch.chdir(tmp_path)
+    # Starts on 2009-12-30: the 2000s get a single return, the 2010s the rest.
+    rows = ["Date,Close"] + [f"{date(2009, 12, 30) + timedelta(days=k)},{100 + (k % 7)}"
+                             for k in range(300)]
+    (tmp_path / "prices.csv").write_text("\n".join(rows) + "\n", encoding="utf-8")
+    run(monkeypatch, data_quality_report, "--csv", "prices.csv", "--by-decade", "--include-test")
+
+    report = strict_json(only(tmp_path.glob("outputs/data_quality_*/report.json")))
+    assert report["decades"]["2000"]["count"] == 1
+    assert "unavailable" in report["decades"]["2000"]
+    assert "lag1_autocorrelation" in report["decades"]["2010"]
+    assert {"training", "validation", "test"} == set(report["parts"])
+
+    constant = data_quality_report.safe_stats([torch.ones(10)])
+    assert constant["count"] == 10 and "costanti" in constant["unavailable"]

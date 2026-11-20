@@ -21,7 +21,18 @@ from timeseries.dataset import returns_by_segment, split_pieces
 from timeseries.prices import iter_csv_prices, resample_last
 
 
+def safe_stats(runs) -> dict:
+    """Come return_stats, ma un gruppo non stimabile non interrompe il report."""
+    try:
+        return return_stats(runs)
+    except ValueError as error:
+        return {"count": sum(len(run) for run in runs), "unavailable": str(error)}
+
+
 def print_row(name, stats, pieces=""):
+    if "unavailable" in stats:
+        print(f"  {name:12s} {stats['count']:6d} {pieces:>6}  non stimabile: {stats['unavailable']}")
+        return
     print(f"  {name:12s} {stats['count']:6d} {pieces:>6} {100 * stats['volatility']:7.2f}% "
           f"{stats['lag1_autocorrelation']:+7.3f} {100 * stats['max_abs']:7.2f}% "
           f"{100 * stats['extreme_share']:6.2f}%")
@@ -72,7 +83,7 @@ def main():
     print(f"  {'parte':12s} {'giorni':>6} {'pezzi':>6} {'volat.':>8} {'autoc.':>7} "
           f"{'max |r|':>8} {'>4σ':>7}")
     for name, pieces in parts.items():
-        stats = return_stats([piece.returns for piece in pieces])
+        stats = safe_stats([piece.returns for piece in pieces])
         stats["first"], stats["last"] = f"{pieces[0].end_times[0]:%Y-%m-%d}", f"{pieces[-1].end_times[-1]:%Y-%m-%d}"
         report["parts"][name] = stats
         print_row(name, stats, str(len(pieces)))
@@ -81,7 +92,7 @@ def main():
         by_decade = decade_runs([piece for pieces in parts.values() for piece in pieces])
         print("  per decennio:")
         for decade in sorted(by_decade):
-            stats = return_stats(by_decade[decade])
+            stats = safe_stats(by_decade[decade])
             report["decades"][str(decade)] = stats
             print_row(f"{decade}s", stats)
 

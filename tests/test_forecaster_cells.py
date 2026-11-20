@@ -13,7 +13,7 @@ def build(cell):
                            elapsed_channel=1)
 
 
-@pytest.mark.parametrize("cell", ["ltc", "cfc"])
+@pytest.mark.parametrize("cell", ["ltc", "cfc", "lstm"])
 def test_shapes_and_gradients(cell):
     config, model = build(cell)
     inputs = torch.stack([torch.randn(5, 7), torch.ones(5, 7)], dim=2)
@@ -45,3 +45,13 @@ def test_invalid_configurations_are_rejected():
                         elapsed_channel=1)
     with pytest.raises(TypeError):
         ReturnForecaster({"hidden_size": 3})
+
+
+def test_lstm_ignores_dt_and_matches_a_plain_lstm():
+    config, model = build("lstm")
+    inputs = torch.stack([torch.randn(3, 5), torch.ones(3, 5)], dim=2)
+    torch.testing.assert_close(model(inputs, dt=0.1), model(inputs, dt=7.0))   # no continuous time
+
+    _, (hidden, _) = model.lstm(inputs)
+    torch.testing.assert_close(model(inputs, dt=0.1), model.readout(hidden[-1]).squeeze(-1))
+    assert (config.input_size, config.hidden_size) == (2, 4)

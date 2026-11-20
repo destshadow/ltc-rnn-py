@@ -47,7 +47,7 @@ def main():
     parser.add_argument("--baseline", default="training_mean",
                         choices=("training_mean", "zero", "linear_ar1"))
     parser.add_argument("--alpha", type=float, default=0.05)
-    parser.add_argument("--cell", choices=("ltc", "cfc"),
+    parser.add_argument("--cell", choices=("ltc", "cfc", "lstm"),
                         help="Riassume solo i run di questa cella (obbligatorio se misti).")
     args = parser.parse_args()
 
@@ -56,7 +56,7 @@ def main():
         parser.error("Nessuna cartella con results.json fra quelle indicate.")
     cells = {path: run_cell(path) for path in runs}
     if args.cell is None and len(set(cells.values())) > 1:
-        parser.error("Run di celle diverse (ltc e cfc): indicare --cell per non mescolarli.")
+        parser.error("Run di celle diverse: indicare --cell per non mescolarli.")
     runs = [path for path in runs if args.cell is None or cells[path] == args.cell]
     if not runs:
         parser.error(f"Nessun run con cella {args.cell}.")

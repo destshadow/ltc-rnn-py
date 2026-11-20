@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 import torch
 from torch import nn
 
@@ -7,6 +9,12 @@ from cfc.sequence import run_cfc_sequence
 from ltc.cell import LTCCell
 from ltc.config import LTCConfig
 from ltc.sequence import run_sequence
+
+
+@dataclass(frozen=True)
+class LstmConfig:
+    input_size: int
+    hidden_size: int
 
 
 class ReturnForecaster(nn.Module):
@@ -46,9 +54,26 @@ class ReturnForecaster(nn.Module):
         return self.readout(final_state).squeeze(-1)
 
 
+class LstmForecaster(nn.Module):
+    """Riferimento obbligatorio: una LSTM standard sulle stesse finestre.
+
+    Non usa dt: vede la durata dell'intervallo solo come ingresso, come qualunque RNN
+    a passo fisso. Se LTC/CfC non la battono, la loro complessità non è giustificata.
+    """
+
+    def __init__(self, input_size: int, hidden_size: int):
+        super().__init__()
+        self.lstm = nn.LSTM(input_size, hidden_size, batch_first=True)
+        self.readout = nn.Linear(hidden_size, 1)
+
+    def forward(self, inputs: torch.Tensor, *, dt: float) -> torch.Tensor:
+        _, (final_hidden, _) = self.lstm(inputs)
+        return self.readout(final_hidden[-1]).squeeze(-1)
+
+
 def make_forecaster(cell: str, *, input_size: int, hidden_size: int, substeps: int,
                     backbone_units: int, elapsed_channel: int):
-    """Configurazione e modello per --cell ltc|cfc; la configurazione va nel checkpoint."""
+    """Configurazione e modello per --cell ltc|cfc|lstm; la configurazione va nel checkpoint."""
     if cell == "ltc":
         config = LTCConfig(input_size=input_size, hidden_size=hidden_size, substeps=substeps)
         return config, ReturnForecaster(config)
@@ -56,4 +81,7 @@ def make_forecaster(cell: str, *, input_size: int, hidden_size: int, substeps: i
         config = CfcConfig(input_size=input_size, hidden_size=hidden_size,
                            backbone_units=backbone_units)
         return config, ReturnForecaster(config, elapsed_channel=elapsed_channel)
-    raise ValueError("cell deve essere 'ltc' o 'cfc'.")
+    if cell == "lstm":
+        return LstmConfig(input_size=input_size, hidden_size=hidden_size), LstmForecaster(
+            input_size, hidden_size)
+    raise ValueError("cell deve essere 'ltc', 'cfc' o 'lstm'.")

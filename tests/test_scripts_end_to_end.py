@@ -315,6 +315,16 @@ def test_training_scripts_run_with_the_cfc_cell(series, tmp_path, monkeypatch, s
     assert strict_json(directory / "results.json")["results"]["test"]["ltc"]["count"] > 0
 
 
+def test_training_runs_with_the_lstm_baseline(series, tmp_path, monkeypatch):
+    run(monkeypatch, train_timeseries, "--csv", str(series), "--epochs", "1", "--lookback", "6",
+        "--hidden-size", "3", "--cell", "lstm")
+    directory = only(tmp_path.glob("outputs/timeseries_*"))
+    checkpoint = torch.load(directory / "best.pt", weights_only=True)
+    assert checkpoint["cell"] == "lstm" and checkpoint["config"] == {"input_size": 2, "hidden_size": 3}
+    assert any(name.startswith("lstm.") for name in checkpoint["model_state_dict"])
+    assert strict_json(directory / "results.json")["results"]["test"]["ltc"]["count"] > 0
+
+
 def test_summarize_runs_never_mixes_ltc_and_cfc(series, tmp_path, monkeypatch, capsys):
     from experiments import summarize_runs
 

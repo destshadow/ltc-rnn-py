@@ -57,3 +57,12 @@ def test_newey_west_scale_on_a_hand_computed_case():
     result = diebold_mariano(loss_a, torch.zeros(8), lags=5)
     assert result["statistic"] == pytest.approx(8.0)
     assert result["p_value"] == pytest.approx(math.erfc(8 / math.sqrt(2)))
+
+
+def test_unavailable_test_is_reported_instead_of_raising():
+    from timeseries.significance import diebold_mariano_or_unavailable
+
+    few = diebold_mariano_or_unavailable(torch.tensor([1.0, 2.0, 3.0]), torch.zeros(3))
+    identical = diebold_mariano_or_unavailable(torch.ones(20), torch.ones(20))
+    for result in (few, identical):
+        assert result["p_value"] is None and result["unavailable"]

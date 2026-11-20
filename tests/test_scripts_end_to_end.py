@@ -187,3 +187,16 @@ def test_summarize_runs_counts_seeds_better_than_the_baseline(series, tmp_path, 
     assert sorted(row["seed"] for row in rows) == [1, 2]
     assert summary["validation"]["better"] == sum(row["relative"] < 0 for row in rows)
     assert 0 <= summary["validation"]["significant_better"] <= summary["validation"]["better"]
+
+
+def test_run_is_saved_when_significance_cannot_be_estimated(series, tmp_path, monkeypatch):
+    # 400 days from 2000-01-01: a test starting on 2001-01-27 leaves only a few windows.
+    run(monkeypatch, train_timeseries, "--csv", str(series), "--epochs", "1", "--lookback", "5",
+        "--hidden-size", "2", "--substeps", "1", "--validation-start", "2000-09-01",
+        "--test-start", "2001-01-27")
+    directory = only(tmp_path.glob("outputs/timeseries_*"))
+
+    test = strict_json(directory / "results.json")["results"]["test"]
+    assert test["ltc"]["count"] <= 6
+    assert all(value["p_value"] is None for value in test["ltc_significance"].values())
+    assert (directory / "predictions.pt").is_file()

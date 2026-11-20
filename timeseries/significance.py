@@ -42,3 +42,15 @@ def diebold_mariano(loss_a: torch.Tensor, loss_b: torch.Tensor, *, lags: int = 5
         "statistic": statistic,
         "p_value": p_value,
     }
+
+
+def diebold_mariano_or_unavailable(loss_a: torch.Tensor, loss_b: torch.Tensor, *, lags: int = 5) -> dict:
+    """Come diebold_mariano, ma un test non stimabile non interrompe il report.
+
+    Restituisce p_value None con il motivo (pochi esempi, differenza costante):
+    non va mai contato come significativo.
+    """
+    try:
+        return diebold_mariano(loss_a, loss_b, lags=lags)
+    except ValueError as error:
+        return {"count": len(loss_a), "p_value": None, "unavailable": str(error)}

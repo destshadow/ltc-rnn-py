@@ -25,7 +25,7 @@ from timeseries.evaluation import baseline_predictions, predict, regression_repo
 from timeseries.linear_baseline import fit_ar1, window_last_returns
 from timeseries.model import ReturnForecaster
 from timeseries.prices import iter_arff_prices, iter_csv_prices, resample_last
-from timeseries.significance import diebold_mariano
+from timeseries.significance import diebold_mariano_or_unavailable
 from timeseries.windows import Standardizer
 from training.checkpoint import save_atomically
 from training.epoch import train_epoch
@@ -72,13 +72,15 @@ def report_all(name, model, inputs, targets, scaler, args, training_mean, linear
     }
     results = {label: regression_report(values, targets) for label, values in forecasts.items()}
     errors = {label: (values - targets) ** 2 for label, values in forecasts.items()}
-    significance = {label: diebold_mariano(errors["ltc"], errors[label])
+    significance = {label: diebold_mariano_or_unavailable(errors["ltc"], errors[label])
                     for label in forecasts if label != "ltc"}
 
     print(f"\n{name} ({len(targets)} finestre)")
     for label, values in results.items():
         direction = values["direction_accuracy"]
-        versus = "" if label == "ltc" else f" | LTC vs: p={significance[label]['p_value']:.3f}"
+        p_value = None if label == "ltc" else significance[label]["p_value"]
+        versus = "" if label == "ltc" else (
+            " | LTC vs: p=n/d" if p_value is None else f" | LTC vs: p={p_value:.3f}")
         print(
             f"  {label:14s} mse {values['mse']:.3e} | "
             f"mae {values['mae']:.3e} | segno "

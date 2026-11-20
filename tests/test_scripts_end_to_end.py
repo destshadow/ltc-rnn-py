@@ -200,3 +200,32 @@ def test_run_is_saved_when_significance_cannot_be_estimated(series, tmp_path, mo
     assert test["ltc"]["count"] <= 6
     assert all(value["p_value"] is None for value in test["ltc_significance"].values())
     assert (directory / "predictions.pt").is_file()
+
+
+def test_summarize_runs_handles_reports_in_the_old_format(series, tmp_path, monkeypatch, capsys):
+    from experiments import summarize_runs
+
+    run(monkeypatch, train_timeseries, "--csv", str(series), "--epochs", "1", "--lookback", "5",
+        "--hidden-size", "2", "--substeps", "1", "--final-epoch")
+    new = only(tmp_path.glob("outputs/timeseries_*"))
+
+    # An older report: no significance and no linear baseline.
+    old = tmp_path / "outputs" / "timeseries_old"
+    old.mkdir()
+    report = strict_json(new / "results.json")
+    for part in report["results"].values():
+        part.pop("ltc_significance")
+        part.pop("linear_ar1")
+    report["protocol"]["arguments"].pop("final_epoch")
+    (old / "results.json").write_text(json.dumps(report), encoding="utf-8")
+    capsys.readouterr()
+
+    run(monkeypatch, summarize_runs, str(new), str(old))
+    summary = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert summary["validation"]["with_test"] == 1          # only the new run has a p-value
+    assert summary["validation"]["skipped_runs"] == 0
+
+    run(monkeypatch, summarize_runs, str(new), str(old), "--baseline", "linear_ar1")
+    summary = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert summary["validation"]["skipped_runs"] == 1        # old run lacks linear_ar1
+    assert summarize_runs.summarize(old, "training_mean", "test")["selection"] == "validazione"

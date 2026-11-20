@@ -313,3 +313,27 @@ def test_training_scripts_run_with_the_cfc_cell(series, tmp_path, monkeypatch, s
     assert checkpoint["cell"] == "cfc" and checkpoint["config"]["backbone_units"] == 4
     assert any(name.startswith("cell.backbone") for name in checkpoint["model_state_dict"])
     assert strict_json(directory / "results.json")["results"]["test"]["ltc"]["count"] > 0
+
+
+def test_summarize_runs_never_mixes_ltc_and_cfc(series, tmp_path, monkeypatch, capsys):
+    from experiments import summarize_runs
+
+    run(monkeypatch, train_timeseries, "--csv", str(series), "--epochs", "1", "--lookback", "5",
+        "--hidden-size", "2", "--substeps", "1", "--cell", "cfc", "--backbone-units", "4")
+    cfc_run = only(tmp_path.glob("outputs/timeseries_*"))
+    old_ltc = tmp_path / "outputs" / "timeseries_old"          # report written before --cell
+    old_ltc.mkdir()
+    report = strict_json(cfc_run / "results.json")
+    report["protocol"]["arguments"].pop("cell")
+    (old_ltc / "results.json").write_text(json.dumps(report), encoding="utf-8")
+    assert (summarize_runs.run_cell(cfc_run), summarize_runs.run_cell(old_ltc)) == ("cfc", "ltc")
+
+    with pytest.raises(SystemExit):                             # mixed group refused
+        run(monkeypatch, summarize_runs, str(cfc_run), str(old_ltc))
+    assert "--cell" in capsys.readouterr().err
+
+    for cell, expected in (("cfc", cfc_run.name), ("ltc", old_ltc.name)):
+        run(monkeypatch, summarize_runs, str(cfc_run), str(old_ltc), "--cell", cell)
+        output = capsys.readouterr().out
+        assert f"rete {cell}" in output and expected in output
+        assert json.loads(output.strip().splitlines()[-1])["validation"]["better"] <= 1

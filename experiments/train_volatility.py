@@ -30,7 +30,7 @@ from training.metrics_log import MetricsLog
 
 
 def report(name, model, part, target_scaler, args, training_volatility):
-    """LTC contro persistenza e volatilità media, nelle unità originali (|rendimento|)."""
+    """Rete (chiave "ltc", cella in args.cell) contro persistenza e volatilità media, in |rendimento|."""
     inputs, targets, persistence = part
     output = target_scaler.inverse(predict(model, inputs, dt=args.dt).double())
     forecasts = {
@@ -54,9 +54,9 @@ def report(name, model, part, target_scaler, args, training_volatility):
         values = results[label]
         test = results["ltc_significance"].get(label, {})
         p_text = "" if label == "ltc" else (
-            " | LTC vs: p=n/d" if test.get("p_value") is None else f" | LTC vs: p={test['p_value']:.3f}")
+            " | rete vs: p=n/d" if test.get("p_value") is None else f" | rete vs: p={test['p_value']:.3f}")
         correlation = values["correlation"]
-        print(f"  {label:14s} mse {values['mse']:.3e} | mae {values['mae']:.3e} | corr "
+        print(f"  {(args.cell if label == 'ltc' else label):14s} mse {values['mse']:.3e} | mae {values['mae']:.3e} | corr "
               + ("n/d" if correlation is None else f"{correlation:+.3f}") + p_text)
     return results, {**forecasts, "targets": targets}
 

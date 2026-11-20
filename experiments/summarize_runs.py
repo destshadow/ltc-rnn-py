@@ -9,6 +9,12 @@ import json
 from pathlib import Path
 
 
+def run_cell(directory: Path) -> str:
+    """Cella della rete di un run; i report precedenti a --cell erano tutti LTC."""
+    report = json.loads((directory / "results.json").read_text(encoding="utf-8"))
+    return report["protocol"]["arguments"].get("cell", "ltc")
+
+
 def summarize(directory: Path, baseline: str, part: str) -> dict | None:
     """Riga di riepilogo di un run: vantaggio relativo della LTC e p-value di Diebold–Mariano.
 
@@ -27,6 +33,7 @@ def summarize(directory: Path, baseline: str, part: str) -> dict | None:
         "epoch": report["protocol"]["best_epoch"],
         # Con la scelta dell'epoca sulla validazione, i suoi p-value non sono una verifica.
         "selection": "finale" if report["protocol"]["arguments"].get("final_epoch") else "validazione",
+        "cell": run_cell(directory),
         "ltc_mse": ltc,
         "baseline_mse": reference,
         "relative": ltc / reference - 1,
@@ -40,11 +47,19 @@ def main():
     parser.add_argument("--baseline", default="training_mean",
                         choices=("training_mean", "zero", "linear_ar1"))
     parser.add_argument("--alpha", type=float, default=0.05)
+    parser.add_argument("--cell", choices=("ltc", "cfc"),
+                        help="Riassume solo i run di questa cella (obbligatorio se misti).")
     args = parser.parse_args()
 
     runs = sorted(path for path in args.runs if (path / "results.json").is_file())
     if not runs:
         parser.error("Nessuna cartella con results.json fra quelle indicate.")
+    cells = {path: run_cell(path) for path in runs}
+    if args.cell is None and len(set(cells.values())) > 1:
+        parser.error("Run di celle diverse (ltc e cfc): indicare --cell per non mescolarli.")
+    runs = [path for path in runs if args.cell is None or cells[path] == args.cell]
+    if not runs:
+        parser.error(f"Nessun run con cella {args.cell}.")
 
     summary = {}
     for part in ("validation", "test"):
@@ -56,7 +71,8 @@ def main():
         summary[part] = {"rows": rows, "better": better, "significant_better": significant,
                          "with_test": len(tested), "skipped_runs": skipped}
 
-        print(f"\n{part}: LTC contro {args.baseline} ({len(rows)} run"
+        cell = rows[0]["cell"] if rows else args.cell
+        print(f"\n{part}: rete {cell} contro {args.baseline} ({len(rows)} run"
               + (f", {skipped} esclusi: riferimento assente)" if skipped else ")"))
         for row in rows:
             p_text = "n/d" if row["p_value"] is None else f"{row['p_value']:.3f}"

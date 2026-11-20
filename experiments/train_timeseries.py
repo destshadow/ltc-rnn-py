@@ -50,16 +50,18 @@ def report_all(name, model, inputs, targets, scaler, args, training_mean, linear
         direction = values["direction_accuracy"]
         p_value = None if label == "ltc" else significance[label]["p_value"]
         versus = "" if label == "ltc" else (
-            " | LTC vs: p=n/d" if p_value is None else f" | LTC vs: p={p_value:.3f}")
+            " | rete vs: p=n/d" if p_value is None else f" | rete vs: p={p_value:.3f}")
         print(
-            f"  {label:14s} mse {values['mse']:.3e} | "
+            # La chiave "ltc" indica la rete (compatibilità dei report); si mostra la cella vera.
+            f"  {(args.cell if label == 'ltc' else label):14s} mse {values['mse']:.3e} | "
             f"mae {values['mae']:.3e} | segno "
             + ("n/d" if direction is None else f"{100 * direction:.1f}%") + versus
         )
 
     spread = results["ltc"]["spread_ratio"]
     if spread is not None and spread < 0.05:  # soglia di avviso, non un criterio
-        print(f"  attenzione: previsioni LTC quasi costanti (oscillazione {spread:.1%} degli obiettivi)")
+        print(f"  attenzione: previsioni della rete ({args.cell}) quasi costanti "
+              f"(oscillazione {spread:.1%} degli obiettivi)")
     return {**results, "ltc_significance": significance}, forecasts
 
 

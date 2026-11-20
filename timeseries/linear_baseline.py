@@ -7,13 +7,15 @@ def fit_ar1(pieces: list[Piece]) -> tuple[float, float]:
     """Stima r_{t+1} = a·r_t + b con i minimi quadrati sulle coppie consecutive.
 
     Le coppie si formano solo dentro ciascun pezzo, mai attraverso un'interruzione.
-    È il riferimento lineare più semplice: se la LTC non lo batte, quello che
-    impara non va oltre la dipendenza dal solo rendimento precedente.
+    È il riferimento lineare più semplice: se la LTC non lo batte, non migliora
+    questa dipendenza dal rendimento precedente nella metrica e nel periodo valutati.
     """
-    today = torch.cat([piece.returns[:-1] for piece in pieces if len(piece.returns) > 1])
-    tomorrow = torch.cat([piece.returns[1:] for piece in pieces if len(piece.returns) > 1])
-    if len(today) < 2:
+    usable = [piece.returns for piece in pieces if len(piece.returns) > 1]
+    # Controllo esplicito prima di concatenare: almeno due coppie consecutive.
+    if sum(len(returns) - 1 for returns in usable) < 2:
         raise ValueError("Servono almeno due coppie di rendimenti consecutivi.")
+    today = torch.cat([returns[:-1] for returns in usable])
+    tomorrow = torch.cat([returns[1:] for returns in usable])
 
     today, tomorrow = today.double(), tomorrow.double()
     variance = (today - today.mean()).pow(2).sum()

@@ -44,8 +44,10 @@ def test_last_returns_are_aligned_with_targets():
 
 def test_degenerate_inputs_are_rejected():
     single = Piece(torch.tensor([1.0]), torch.ones(1), [datetime(2024, 1, 2)])
-    with pytest.raises(ValueError):
-        fit_ar1([single])
+    one_pair = Piece(torch.tensor([1.0, 2.0]), torch.ones(2), [datetime(2024, 1, 2), datetime(2024, 1, 3)])
+    for pieces in ([], [single], [single, single], [one_pair]):
+        with pytest.raises(ValueError, match="due coppie"):   # our message, not torch.cat's
+            fit_ar1(pieces)
     constant = Piece(torch.ones(5), torch.ones(5), [datetime(2024, 1, k) for k in range(2, 7)])
     with pytest.raises(ValueError, match="costanti"):
         fit_ar1([constant])

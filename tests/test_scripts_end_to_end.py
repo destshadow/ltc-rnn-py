@@ -248,3 +248,17 @@ def test_volatility_training_end_to_end(series, tmp_path, monkeypatch):
     predictions = torch.load(directory / "predictions.pt", weights_only=True)
     assert (predictions["test"]["targets"] >= 0).all()
     assert len(predictions["test"]["ltc"]) == test["ltc"]["count"]
+
+
+def test_volatility_persistence_ratio_mode(series, tmp_path, monkeypatch):
+    from experiments import train_volatility
+
+    run(monkeypatch, train_volatility, "--csv", str(series), "--epochs", "1", "--lookback", "6",
+        "--hidden-size", "2", "--substeps", "1", "--horizon", "3", "--mode", "persistence_ratio")
+    directory = only(tmp_path.glob("outputs/volatility_*"))
+
+    assert torch.load(directory / "best.pt", weights_only=True)["mode"] == "persistence_ratio"
+    predictions = torch.load(directory / "predictions.pt", weights_only=True)["test"]
+    # Corrections multiply persistence: forecasts stay positive and finite.
+    assert (predictions["ltc"] > 0).all() and torch.isfinite(predictions["ltc"]).all()
+    assert strict_json(directory / "results.json")["protocol"]["arguments"]["mode"] == "persistence_ratio"

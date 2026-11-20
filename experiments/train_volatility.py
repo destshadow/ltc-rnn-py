@@ -22,7 +22,7 @@ from ltc.config import LTCConfig
 from timeseries.evaluation import predict, regression_report
 from timeseries.model import ReturnForecaster
 from timeseries.significance import diebold_mariano_or_unavailable
-from timeseries.volatility import volatility_dataset
+from timeseries.volatility import from_log_ratio, to_log_ratio, volatility_dataset
 from timeseries.windows import Standardizer
 from training.checkpoint import save_atomically
 from training.fit import fit_and_select
@@ -32,8 +32,10 @@ from training.metrics_log import MetricsLog
 def report(name, model, part, target_scaler, args, training_volatility):
     """LTC contro persistenza e volatilità media, nelle unità originali (|rendimento|)."""
     inputs, targets, persistence = part
+    output = target_scaler.inverse(predict(model, inputs, dt=args.dt).double())
     forecasts = {
-        "ltc": target_scaler.inverse(predict(model, inputs, dt=args.dt).double()),
+        # persistence_ratio: la rete prevede log(futura/persistenza), quindi corregge la persistenza.
+        "ltc": from_log_ratio(output, persistence) if args.mode == "persistence_ratio" else output,
         "persistence": persistence,
         "training_mean": torch.full_like(targets, training_volatility),
     }
@@ -61,6 +63,8 @@ def report(name, model, part, target_scaler, args, training_volatility):
 def main():
     parser = build_parser("Previsione della volatilità realizzata con la LTC.")
     parser.add_argument("--horizon", type=int, default=5, help="Giorni futuri della volatilità.")
+    parser.add_argument("--mode", choices=("level", "persistence_ratio"), default="level",
+                        help="level: volatilità diretta; persistence_ratio: correzione della persistenza.")
     args = parse_arguments(parser=parser)
     torch.manual_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -71,12 +75,15 @@ def main():
                                          horizon=args.horizon)
                 for name, pieces in zip(("training", "validation", "test"), parts)}
     # La rete impara la volatilità standardizzata sul training; i report tornano alle unità originali.
-    target_scaler = Standardizer.fit(datasets["training"][1])
+    def raw_target(name):
+        _, targets, persistence = datasets[name]
+        return to_log_ratio(targets, persistence) if args.mode == "persistence_ratio" else targets
+
+    target_scaler = Standardizer.fit(raw_target("training"))
     training_volatility = datasets["training"][1].mean().item()
 
     def standardized(name):
-        inputs, targets, _ = datasets[name]
-        return inputs, target_scaler.transform(targets).float()
+        return datasets[name][0], target_scaler.transform(raw_target(name)).float()
 
     config = LTCConfig(input_size=2, hidden_size=args.hidden_size, substeps=args.substeps)
     model = ReturnForecaster(config).to(device)
@@ -91,7 +98,8 @@ def main():
                          validation_baseline=validation[1].double().pow(2).mean().item())
     print("Metriche dal vivo:", directory / "metrics.csv", flush=True)
     checkpoint = {"config": asdict(config), "dt": args.dt, "lookback": args.lookback,
-                  "horizon": args.horizon, "target": "realized_volatility_mean_abs_return",
+                  "horizon": args.horizon, "mode": args.mode,
+                  "target": "realized_volatility_mean_abs_return",
                   "standardizer": asdict(scaler), "target_standardizer": asdict(target_scaler)}
 
     best_epoch, best_state = fit_and_select(

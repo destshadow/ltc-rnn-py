@@ -168,3 +168,22 @@ def test_final_epoch_uses_the_last_model_without_validation_choice(series, tmp_p
     assert torch.load(directory / "best.pt", weights_only=True)["epoch"] == 3
     protocol = strict_json(directory / "results.json")["protocol"]
     assert protocol["best_epoch"] == 3 and protocol["arguments"]["final_epoch"] is True
+
+
+def test_summarize_runs_counts_seeds_better_than_the_baseline(series, tmp_path, monkeypatch, capsys):
+    from experiments import summarize_runs
+
+    for seed in ("1", "2"):
+        run(monkeypatch, train_timeseries, "--csv", str(series), "--epochs", "1", "--lookback", "5",
+            "--hidden-size", "2", "--substeps", "1", "--final-epoch", "--seed", seed)
+    runs = sorted(tmp_path.glob("outputs/timeseries_*"))
+    assert len(runs) == 2
+    capsys.readouterr()
+
+    run(monkeypatch, summarize_runs, *map(str, runs))
+    summary = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+
+    rows = [summarize_runs.summarize(path, "training_mean", "validation") for path in runs]
+    assert sorted(row["seed"] for row in rows) == [1, 2]
+    assert summary["validation"]["better"] == sum(row["relative"] < 0 for row in rows)
+    assert 0 <= summary["validation"]["significant_better"] <= summary["validation"]["better"]

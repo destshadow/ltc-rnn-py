@@ -59,7 +59,16 @@ def test_training_writes_metrics_checkpoint_and_strict_report(series, tmp_path, 
     assert checkpoint["validation_loss"] == min(float(row["validation_loss"]) for row in rows)
 
     report = strict_json(directory / "results.json")
-    assert set(report["results"]["test"]) == {"ltc", "zero", "training_mean", "linear_ar1"}
+    test = report["results"]["test"]
+    assert set(test) == {"ltc", "zero", "training_mean", "linear_ar1", "ltc_significance"}
+    assert set(test["ltc_significance"]) == {"zero", "training_mean", "linear_ar1"}
+    assert all(0 <= value["p_value"] <= 1 for value in test["ltc_significance"].values())
+
+    predictions = torch.load(directory / "predictions.pt", weights_only=True)
+    for part in ("validation", "test"):
+        assert set(predictions[part]) == {"ltc", "zero", "training_mean", "linear_ar1", "targets"}
+        assert len({len(values) for values in predictions[part].values()}) == 1
+    assert len(predictions["test"]["targets"]) == test["ltc"]["count"]
     assert report["results"]["test"]["zero"]["direction_accuracy"] is None
     assert not list(directory.glob("*.tmp"))
 

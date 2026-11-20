@@ -25,6 +25,7 @@ from timeseries.evaluation import baseline_predictions, predict, regression_repo
 from timeseries.linear_baseline import fit_ar1, window_last_returns
 from timeseries.model import ReturnForecaster
 from timeseries.prices import iter_arff_prices, iter_csv_prices, resample_last
+from timeseries.significance import diebold_mariano
 from timeseries.windows import Standardizer
 from training.checkpoint import save_atomically
 from training.epoch import train_epoch
@@ -57,28 +58,34 @@ def period_of(args):
 
 
 def report_all(name, model, inputs, targets, scaler, args, training_mean, linear):
-    """Confronta LTC e riferimenti nelle unità originali dei rendimenti."""
-    # targets: rendimenti originali (window_targets), non ricostruiti dallo scaler.
-    predictions = scaler.inverse(predict(model, inputs, dt=args.dt).double())
+    """Confronta LTC e riferimenti nelle unità originali dei rendimenti.
 
-    results = {"ltc": regression_report(predictions, targets)}
-    for baseline, values in baseline_predictions(
-        targets, training_mean=training_mean
-    ).items():
-        results[baseline] = regression_report(values, targets)
+    targets: rendimenti originali (window_targets), non ricostruiti dallo scaler.
+    Restituisce le metriche (con Diebold–Mariano LTC contro ogni riferimento)
+    e le previsioni, da salvare per analisi successive.
+    """
     slope, intercept, last_returns = linear  # riferimento lineare r_{t+1} = a·r_t + b
-    results["linear_ar1"] = regression_report(slope * last_returns + intercept, targets)
+    forecasts = {
+        "ltc": scaler.inverse(predict(model, inputs, dt=args.dt).double()),
+        **baseline_predictions(targets, training_mean=training_mean),
+        "linear_ar1": slope * last_returns + intercept,
+    }
+    results = {label: regression_report(values, targets) for label, values in forecasts.items()}
+    errors = {label: (values - targets) ** 2 for label, values in forecasts.items()}
+    significance = {label: diebold_mariano(errors["ltc"], errors[label])
+                    for label in forecasts if label != "ltc"}
 
     print(f"\n{name} ({len(targets)} finestre)")
     for label, values in results.items():
         direction = values["direction_accuracy"]
+        versus = "" if label == "ltc" else f" | LTC vs: p={significance[label]['p_value']:.3f}"
         print(
             f"  {label:14s} mse {values['mse']:.3e} | "
             f"mae {values['mae']:.3e} | segno "
-            + ("n/d" if direction is None else f"{100 * direction:.1f}%")
+            + ("n/d" if direction is None else f"{100 * direction:.1f}%") + versus
         )
 
-    return results
+    return {**results, "ltc_significance": significance}, forecasts
 
 
 def main():
@@ -177,7 +184,7 @@ def main():
 
     ar1 = fit_ar1(parts[0])  # stimato solo sul training
     print(f"Riferimento lineare: r(t+1) = {ar1[0]:+.4f}·r(t) {ar1[1]:+.2e}")
-    results = {
+    reports = {
         name: report_all(
             name, model, datasets[name][0],
             window_targets(parts[index], lookback=args.lookback),
@@ -186,6 +193,10 @@ def main():
         )
         for index, name in ((1, "validation"), (2, "test"))
     }
+    results = {name: report[0] for name, report in reports.items()}
+    torch.save({name: {**report[1], "targets": window_targets(parts[index], lookback=args.lookback)}
+                for index, (name, report) in enumerate(reports.items(), start=1)},
+               directory / "predictions.pt")
 
     protocol = {
         "source": str(args.csv or args.arff),

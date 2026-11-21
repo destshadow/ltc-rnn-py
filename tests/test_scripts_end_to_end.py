@@ -405,6 +405,10 @@ def test_summarize_event_runs_reports_ratios_and_refuses_mixed_devices(tmp_path,
     summary = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
     assert summary == {"better": 2, "count": 3, "min": 0.5, "median": 0.8, "max": 1.2}
 
+    with pytest.raises(SystemExit):   # fake reports only have volatility and drift
+        run(monkeypatch, summarize_event_runs, *map(str, runs), "--output", "toxicity")
+    assert "Uscita toxicity assente" in capsys.readouterr().err
+
     gpu = fake_run("d", 0, 0.9, 1.0, "cuda")
     with pytest.raises(SystemExit):
         run(monkeypatch, summarize_event_runs, str(runs[0]), str(gpu))

@@ -63,6 +63,10 @@ def main():
     problem = homogeneity_problem(runs)
     if problem:
         parser.error(problem)
+    missing = [path.name for path in runs if args.output not in
+               json.loads((path / "results.json").read_text(encoding="utf-8"))["results"]]
+    if missing:   # es. toxicity o k chiesti su report --data events
+        parser.error(f"Uscita {args.output} assente nei report: {', '.join(missing)}.")
     devices = {json.loads((path / "results.json").read_text(encoding="utf-8")).get("device", "cpu")
                for path in runs}
 

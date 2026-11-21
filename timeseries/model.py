@@ -41,8 +41,8 @@ class ReturnForecaster(nn.Module):
         self.elapsed_channel = elapsed_channel
         self.readout = nn.Linear(config.hidden_size, 1)
 
-    def forward(self, inputs: torch.Tensor, *, dt: float) -> torch.Tensor:
-        """inputs: [batch, istanti, ingressi] -> previsioni [batch]."""
+    def encode(self, inputs: torch.Tensor, *, dt: float) -> torch.Tensor:
+        """inputs: [batch, istanti, ingressi] -> stato finale della cella [batch, neuroni]."""
         if isinstance(self.cell, CfcCell):
             _, final_state = run_cfc_sequence(
                 self.cell, inputs, dt=dt * inputs[:, :, self.elapsed_channel],
@@ -50,8 +50,37 @@ class ReturnForecaster(nn.Module):
             )
         else:
             _, final_state = run_sequence(self.cell, inputs, dt=dt, collect_history=False)
+        return final_state
 
-        return self.readout(final_state).squeeze(-1)
+    def forward(self, inputs: torch.Tensor, *, dt: float) -> torch.Tensor:
+        """inputs: [batch, istanti, ingressi] -> previsioni [batch]."""
+        return self.readout(self.encode(inputs, dt=dt)).squeeze(-1)
+
+
+class MultiOutputForecaster(ReturnForecaster):
+    """Una sola cella e più stime con nome, es. ("drift", "volatility"): [batch, uscite].
+
+    Le uscite condividono lo stato: per il market making la rete stima insieme le
+    grandezze che regolano spread e skew, con un solo calcolo per evento.
+    """
+
+    def __init__(self, config: LTCConfig | CfcConfig, outputs: tuple[str, ...], *,
+                 elapsed_channel: int | None = None):
+        super().__init__(config, elapsed_channel=elapsed_channel)
+        if not outputs or len(set(outputs)) != len(outputs) or not all(
+                isinstance(name, str) and name for name in outputs):
+            raise ValueError("outputs deve contenere nomi non vuoti e distinti.")
+        self.outputs = tuple(outputs)
+        self.readout = nn.Linear(config.hidden_size, len(self.outputs))
+
+    def forward(self, inputs: torch.Tensor, *, dt: float) -> torch.Tensor:
+        return self.readout(self.encode(inputs, dt=dt))
+
+    def named(self, predictions: torch.Tensor) -> dict[str, torch.Tensor]:
+        """[batch, uscite] -> {nome: [batch]}, nell'ordine di `outputs`."""
+        if predictions.ndim != 2 or predictions.shape[1] != len(self.outputs):
+            raise ValueError("predictions deve avere forma [batch, uscite].")
+        return {name: predictions[:, index] for index, name in enumerate(self.outputs)}
 
 
 class LstmForecaster(nn.Module):

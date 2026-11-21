@@ -372,3 +372,28 @@ def test_constant_baseline_uses_the_training_mean_not_the_test_mean():
     assert baselines["oracle_constant_mse"] == pytest.approx(1.0)
     # Honest constant: variance + (test mean − training mean)² = 1 + 1.5².
     assert baselines["constant_mse"] == pytest.approx(1.0 + 1.5 ** 2)
+
+
+def test_summarize_event_runs_reports_ratios_and_refuses_mixed_devices(tmp_path, monkeypatch, capsys):
+    from experiments import summarize_event_runs
+
+    def fake_run(name, seed, cfc, naive, device=None):
+        directory = tmp_path / name
+        directory.mkdir()
+        report = {"arguments": {"seed": seed}, "results": {
+            "volatility": {"cfc_mse": cfc, "naive_mse": naive},
+            "drift": {"cfc_mse": 1.0, "naive_mse": 1.0}}}
+        if device:
+            report["device"] = device
+        (directory / "results.json").write_text(json.dumps(report), encoding="utf-8")
+        return directory
+
+    runs = [fake_run("a", 0, 0.8, 1.0), fake_run("b", 1, 1.2, 1.0, "cpu"), fake_run("c", 2, 0.5, 1.0, "cpu")]
+    run(monkeypatch, summarize_event_runs, *map(str, runs))
+    summary = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert summary == {"better": 2, "count": 3, "min": 0.5, "median": 0.8, "max": 1.2}
+
+    gpu = fake_run("d", 0, 0.9, 1.0, "cuda")
+    with pytest.raises(SystemExit):
+        run(monkeypatch, summarize_event_runs, str(runs[0]), str(gpu))
+    assert "dispositivi" in capsys.readouterr().err

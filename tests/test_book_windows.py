@@ -37,3 +37,26 @@ def test_naive_estimators_recover_toxicity_and_k_in_a_single_regime():
     naive = book_windows(events, lookback=400)["naive"]
     assert naive[:, 2].mean().item() == pytest.approx(0.4, abs=0.03)
     assert naive[:, 3].mean().item() == pytest.approx(1.5, rel=0.03)
+
+
+def test_agreement_input_is_causal_and_optional():
+    events = book_events(60, seed=0)
+    plain = book_windows(events, lookback=6)
+    extended = book_windows(events, lookback=6, with_agreement=True)
+
+    assert extended["inputs"].shape == (54, 6, 5)
+    torch.testing.assert_close(extended["inputs"][:, :, :4], plain["inputs"])
+    torch.testing.assert_close(extended["targets"], plain["targets"])
+
+    sign = torch.where(events["returns"] >= 0, 1.0, -1.0)
+    k = 20
+    for step in range(6):
+        i = k + step                                   # global event index
+        assert extended["inputs"][k, step, 4].item() == events["side"][i - 1].item() * sign[i].item()
+
+    # Changing anything after the window leaves the extra input unchanged (no look-ahead).
+    future = dict(events, side=events["side"].clone(), returns=events["returns"].clone())
+    future["side"][k + 6:] *= -1
+    future["returns"][k + 6:] *= -1
+    torch.testing.assert_close(book_windows(future, lookback=6, with_agreement=True)["inputs"][k],
+                               extended["inputs"][k])

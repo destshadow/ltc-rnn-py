@@ -11,6 +11,7 @@ finestra. --data events: drift e volatilità; --data book: anche tossicità e k.
 import argparse
 import json
 import time
+from functools import partial
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -34,6 +35,8 @@ OUTPUTS = ("drift", "volatility")
 DATASETS = {
     "events": (regime_events, event_windows, OUTPUTS),
     "book": (book_events, book_windows, BOOK_OUTPUTS),
+    # Con l'ingresso causale "lato precedente × segno del rendimento attuale" (blocco T).
+    "book_agreement": (book_events, partial(book_windows, with_agreement=True), BOOK_OUTPUTS),
 }
 
 

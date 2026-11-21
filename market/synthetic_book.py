@@ -30,8 +30,12 @@ def book_events(
 
     side ∈ {−1, +1}: con probabilità pari alla tossicità vera l'ordine è INFORMATO e segue il
     segno del rendimento dell'evento successivo; altrimenti il lato è casuale.
-    reach ≥ 0 (in unità di prezzo dal mid): esponenziale di parametro k vero, quindi un ordine
-    limite a distanza δ viene eseguito con probabilità exp(−k·δ) (forma di Avellaneda-Stoikov).
+    reach ≥ 0 (in unità di prezzo dal mid): esponenziale di parametro k vero, quindi
+    P(reach ≥ δ) = exp(−k·δ) (forma di Avellaneda-Stoikov). È la probabilità di esecuzione
+    di un nostro ordine limite a distanza δ CONDIZIONATA a un ordine a mercato del lato
+    compatibile (acquisto per un nostro ask, vendita per un bid); per evento va moltiplicata
+    per la probabilità di quel lato. Qui si genera il parametro della portata, non un
+    simulatore di esecuzioni (code e intensità temporali non sono modellate).
     Tossicità e k cambiano per regimi indipendenti da quelli del prezzo.
     """
     if min(toxicities, default=-1) < 0 or max(toxicities, default=2) > 1:

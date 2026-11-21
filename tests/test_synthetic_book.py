@@ -28,7 +28,7 @@ def test_reach_is_exponential_with_rate_k(events):
     for k in (0.5, 1.0, 2.0):
         reach = events["reach"][events["true_k"] == k]
         assert reach.mean().item() == pytest.approx(1 / k, rel=0.02)
-        # Probability that a limit order at distance δ is filled: exp(−k·δ).
+        # P(reach >= δ) = exp(−k·δ): fill probability given a market order on the compatible side.
         delta = 1.0
         assert (reach >= delta).double().mean().item() == pytest.approx(math.exp(-k * delta), abs=0.01)
 

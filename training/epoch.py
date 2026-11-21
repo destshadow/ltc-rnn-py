@@ -18,7 +18,8 @@ def train_epoch(
     if type(batch_size) is not int or batch_size <= 0:
         raise ValueError("batch_size deve essere un intero positivo.")
 
-    if len(inputs) == 0 or labels.shape != (len(inputs),):
+    # Un'etichetta per esempio: [n] (una uscita) oppure [n, uscite] (più uscite).
+    if len(inputs) == 0 or labels.ndim not in (1, 2) or labels.shape[0] != len(inputs):
         raise ValueError("Servono dati non vuoti e un'etichetta per esempio.")
 
     if inputs.device != labels.device:

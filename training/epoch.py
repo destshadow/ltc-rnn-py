@@ -25,7 +25,9 @@ def train_epoch(
     if inputs.device != labels.device:
         raise ValueError("Ingressi ed etichette devono avere lo stesso dispositivo.")
 
-    order = torch.randperm(len(inputs), device=inputs.device)
+    # Ordine generato sempre con il generatore della CPU: lo stesso seme mescola i lotti
+    # allo stesso modo su CPU e GPU (sulla CPU la sequenza è quella di prima).
+    order = torch.randperm(len(inputs)).to(inputs.device)
     total_loss = 0.0
 
     for start in range(0, len(inputs), batch_size):

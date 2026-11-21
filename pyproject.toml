@@ -21,7 +21,7 @@ authors = ["ncps==1.0.1"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["ltc*", "cfc*", "models*", "inference*", "training*", "data*", "visualization*", "timeseries*"]
+include = ["ltc*", "cfc*", "market*", "models*", "inference*", "training*", "data*", "visualization*", "timeseries*"]
 exclude = ["tests*", "outputs*"]
 
 [tool.pytest.ini_options]

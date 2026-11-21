@@ -17,7 +17,7 @@ timestral = ["timestral @ git+https://github.com/mistralai/timestral.git@a534bdb
 # Download storico da Yahoo Finance (non ufficiale): experiments/download_yahoo.py.
 yahoo = ["yfinance"]
 # Implementazione degli autori di CfC/LTC, per tests/test_cfc_authors.py.
-authors = ["ncps"]
+authors = ["ncps==1.0.1"]
 
 [tool.setuptools.packages.find]
 where = ["."]

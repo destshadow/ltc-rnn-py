@@ -1,10 +1,11 @@
-"""Controllo del modello per il market making su eventi sintetici con μ e σ noti.
+"""Controllo del modello per il market making su eventi sintetici con valori veri noti.
 
-La CfC a più uscite stima drift e volatilità in vigore all'evento successivo dagli
-ultimi --lookback eventi irregolari; si confronta con i valori veri e con le stime
-"da manuale" della finestra.
+La CfC a più uscite stima, dagli ultimi --lookback eventi irregolari, i valori in vigore
+all'evento successivo; si confronta con i valori veri e con le stime "da manuale" della
+finestra. --data events: drift e volatilità; --data book: anche tossicità e k.
 
     python -m experiments.check_event_model --events 60000 --epochs 15
+    python -m experiments.check_event_model --data book
 """
 
 import argparse
@@ -16,7 +17,10 @@ from pathlib import Path
 import torch
 
 from cfc.config import CfcConfig
+from market.book_windows import OUTPUTS as BOOK_OUTPUTS
+from market.book_windows import book_windows
 from market.event_windows import event_windows
+from market.synthetic_book import book_events
 from market.synthetic_events import regime_events
 from timeseries.evaluation import predict
 from timeseries.model import MultiOutputForecaster
@@ -26,6 +30,11 @@ from training.metrics_log import MetricsLog
 from training.multi_loss import MultiOutputLoss
 
 OUTPUTS = ("drift", "volatility")
+# Generatore, finestre e uscite per ogni tipo di dati sintetici.
+DATASETS = {
+    "events": (regime_events, event_windows, OUTPUTS),
+    "book": (book_events, book_windows, BOOK_OUTPUTS),
+}
 
 
 def constant_baselines(truth: torch.Tensor, training_mean: float) -> dict[str, float]:
@@ -42,6 +51,7 @@ def constant_baselines(truth: torch.Tensor, training_mean: float) -> dict[str, f
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--data", choices=sorted(DATASETS), default="events")
     parser.add_argument("--events", type=int, default=60000)
     parser.add_argument("--lookback", type=int, default=50)
     parser.add_argument("--hidden-size", type=int, default=16)
@@ -56,22 +66,24 @@ def main():
                           else "cpu" if args.device == "auto" else args.device)
 
     # Tre serie indipendenti (semi diversi): training, validazione, test.
-    parts = {name: event_windows(regime_events(args.events if name == "training" else args.events // 3,
-                                               seed=args.seed * 10 + offset), lookback=args.lookback)
+    generate, windows, outputs = DATASETS[args.data]
+    parts = {name: windows(generate(args.events if name == "training" else args.events // 3,
+                                    seed=args.seed * 10 + offset), lookback=args.lookback)
              for offset, name in enumerate(("training", "validation", "test"))}
     returns = Standardizer.fit(parts["training"]["inputs"][:, :, 0].flatten())
-    target_scalers = [Standardizer.fit(parts["training"]["targets"][:, k]) for k in range(2)]
+    target_scalers = [Standardizer.fit(parts["training"]["targets"][:, k]) for k in range(len(outputs))]
 
     def tensors(part):
         inputs = part["inputs"].clone()
-        inputs[:, :, 0] = returns.transform(inputs[:, :, 0])          # Δt resta grezzo
+        inputs[:, :, 0] = returns.transform(inputs[:, :, 0])   # Δt (e lato, portata) restano grezzi
         targets = torch.stack([s.transform(part["targets"][:, k])
                                for k, s in enumerate(target_scalers)], dim=1)
         return inputs.float(), targets.float()
 
-    model = MultiOutputForecaster(CfcConfig(2, args.hidden_size, backbone_units=args.backbone_units),
-                                  OUTPUTS, elapsed_channel=1).to(device)
-    loss = MultiOutputLoss(OUTPUTS)
+    input_size = parts["training"]["inputs"].shape[2]
+    model = MultiOutputForecaster(CfcConfig(input_size, args.hidden_size, backbone_units=args.backbone_units),
+                                  outputs, elapsed_channel=1).to(device)
+    loss = MultiOutputLoss(outputs)
     directory = Path("outputs") / f"event_model_{datetime.now(timezone.utc):%Y%m%dT%H%M%S_%fZ}"
     directory.mkdir(parents=True, exist_ok=False)
     validation = tensors(parts["validation"])
@@ -92,7 +104,7 @@ def main():
 
     results = {}
     print(f"Test: {len(truth)} finestre di {args.lookback} eventi")
-    for k, name in enumerate(OUTPUTS):
+    for k, name in enumerate(outputs):
         results[name] = {
             "cfc_mse": ((estimates[:, k] - truth[:, k]) ** 2).mean().item(),
             "naive_mse": ((naive[:, k] - truth[:, k]) ** 2).mean().item(),

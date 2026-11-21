@@ -364,6 +364,17 @@ def test_event_model_check_end_to_end(tmp_path, monkeypatch):
         assert value["oracle_constant_mse"] <= value["constant_mse"] + 1e-12
 
 
+def test_event_model_check_on_the_book_data(tmp_path, monkeypatch):
+    from experiments import check_event_model
+
+    monkeypatch.chdir(tmp_path)
+    run(monkeypatch, check_event_model, "--data", "book", "--events", "600", "--lookback", "10",
+        "--epochs", "1", "--hidden-size", "3", "--backbone-units", "4", "--device", "cpu")
+    report = strict_json(only(tmp_path.glob("outputs/event_model_*/results.json")))
+    assert list(report["results"]) == ["drift", "volatility", "toxicity", "k"]
+    assert report["arguments"]["data"] == "book"
+
+
 def test_constant_baseline_uses_the_training_mean_not_the_test_mean():
     from experiments.check_event_model import constant_baselines
 

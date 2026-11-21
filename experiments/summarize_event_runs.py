@@ -10,7 +10,7 @@ from statistics import median
 
 
 # Impostazioni che devono coincidere per confrontare semi diversi dello stesso esperimento.
-SETTINGS = ("events", "lookback", "epochs", "hidden_size", "backbone_units")
+SETTINGS = ("data", "events", "lookback", "epochs", "hidden_size", "backbone_units")
 
 
 def homogeneity_problem(runs: list[Path]) -> str | None:
@@ -21,7 +21,9 @@ def homogeneity_problem(runs: list[Path]) -> str | None:
     if len(devices) > 1:
         return "Run su dispositivi diversi: riassumerli separatamente."
     for name in SETTINGS:
-        values = {report["arguments"].get(name) for report in reports.values()}
+        # "data" manca nei report precedenti a --data: erano tutti "events".
+        values = {report["arguments"].get(name, "events" if name == "data" else None)
+                  for report in reports.values()}
         if len(values) > 1:
             return f"Impostazione diversa fra i run ({name}: {sorted(map(str, values))})."
     by_seed = {}
@@ -51,7 +53,8 @@ def summarize(runs: list[Path], output: str) -> dict:
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("runs", nargs="+", type=Path)
-    parser.add_argument("--output", choices=("volatility", "drift"), default="volatility")
+    parser.add_argument("--output", choices=("volatility", "drift", "toxicity", "k"),
+                        default="volatility")
     args = parser.parse_args()
 
     runs = sorted({path.resolve() for path in args.runs if (path / "results.json").is_file()})

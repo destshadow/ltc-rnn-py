@@ -61,6 +61,8 @@ def main():
     parser.add_argument("--backbone-units", type=int, default=32)
     parser.add_argument("--epochs", type=int, default=15)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--learning-rate", type=float, default=0.005,
+                        help="Passo di Adam (0.005 = valore usato fino al blocco K).")
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto",
                         help="auto: GPU se disponibile, come gli altri script.")
     args = parser.parse_args()
@@ -91,7 +93,7 @@ def main():
     directory.mkdir(parents=True, exist_ok=False)
     validation = tensors(parts["validation"])
     started = time.perf_counter()
-    fit_and_select(model, torch.optim.Adam(model.parameters(), lr=0.005), loss,
+    fit_and_select(model, torch.optim.Adam(model.parameters(), lr=args.learning_rate), loss,
                    tuple(tensor.to(device) for tensor in tensors(parts["training"])), validation,
                    dt=1.0, epochs=args.epochs,
                    batch_size=128, final_epoch=True, predict=predict,

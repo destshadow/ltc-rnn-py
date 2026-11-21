@@ -386,6 +386,20 @@ def test_event_model_check_with_the_agreement_input(tmp_path, monkeypatch):
     assert report["arguments"]["data"] == "book_agreement" and "toxicity" in report["results"]
 
 
+def test_event_model_learning_rate_is_configurable_and_recorded(tmp_path, monkeypatch):
+    from experiments import check_event_model, summarize_event_runs
+
+    monkeypatch.chdir(tmp_path)
+    for rate in ("0.001", "0.005"):
+        run(monkeypatch, check_event_model, "--events", "600", "--lookback", "10", "--epochs", "1",
+            "--hidden-size", "3", "--backbone-units", "4", "--device", "cpu", "--learning-rate", rate)
+    runs = sorted(tmp_path.glob("outputs/event_model_*"))
+    rates = sorted(strict_json(path / "results.json")["arguments"]["learning_rate"] for path in runs)
+    assert rates == [0.001, 0.005]
+    # Different learning rates are different experiments: the summary refuses to mix them.
+    assert "learning_rate" in summarize_event_runs.homogeneity_problem([p.resolve() for p in runs])
+
+
 def test_constant_baseline_uses_the_training_mean_not_the_test_mean():
     from experiments.check_event_model import constant_baselines
 

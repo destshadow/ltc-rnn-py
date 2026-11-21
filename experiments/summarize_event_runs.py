@@ -10,7 +10,8 @@ from statistics import median
 
 
 # Impostazioni che devono coincidere per confrontare semi diversi dello stesso esperimento.
-SETTINGS = ("data", "events", "lookback", "epochs", "hidden_size", "backbone_units")
+SETTINGS = ("data", "events", "lookback", "epochs", "hidden_size", "backbone_units",
+            "learning_rate")
 
 
 def homogeneity_problem(runs: list[Path]) -> str | None:
@@ -22,8 +23,8 @@ def homogeneity_problem(runs: list[Path]) -> str | None:
         return "Run su dispositivi diversi: riassumerli separatamente."
     for name in SETTINGS:
         # "data" manca nei report precedenti a --data: erano tutti "events".
-        values = {report["arguments"].get(name, "events" if name == "data" else None)
-                  for report in reports.values()}
+        defaults = {"data": "events", "learning_rate": 0.005}   # valori prima delle opzioni
+        values = {report["arguments"].get(name, defaults.get(name)) for report in reports.values()}
         if len(values) > 1:
             return f"Impostazione diversa fra i run ({name}: {sorted(map(str, values))})."
     by_seed = {}

@@ -21,12 +21,15 @@ def read_metrics(path: Path) -> dict[str, list[float]]:
     }
 
 
+RUN_PATTERNS = ("timeseries_*", "volatility_*", "event_model_*")
+
+
 def latest_metrics(root: Path = Path("outputs")) -> Path:
-    # Training dei rendimenti (timeseries_*) e della volatilità (volatility_*).
-    candidates = sorted([*root.glob("timeseries_*/metrics.csv"), *root.glob("volatility_*/metrics.csv")],
+    # Rendimenti (timeseries_*), volatilità (volatility_*) e controlli su eventi (event_model_*).
+    candidates = sorted((path for pattern in RUN_PATTERNS for path in root.glob(f"{pattern}/metrics.csv")),
                         key=lambda path: path.stat().st_mtime)
     if not candidates:
-        raise FileNotFoundError("Nessun outputs/timeseries_* o volatility_* con metrics.csv.")
+        raise FileNotFoundError(f"Nessun metrics.csv in outputs/ ({', '.join(RUN_PATTERNS)}).")
     return candidates[-1]
 
 

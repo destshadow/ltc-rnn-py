@@ -77,3 +77,16 @@ def test_latest_metrics_also_finds_volatility_runs(tmp_path):
     os.utime(older, (1, 1))   # make the returns run clearly older
 
     assert latest_metrics(tmp_path) == newer
+
+
+def test_latest_metrics_also_finds_event_model_runs(tmp_path):
+    import os
+
+    older = tmp_path / "volatility_a" / "metrics.csv"
+    newer = tmp_path / "event_model_b" / "metrics.csv"
+    for path in (older, newer):
+        path.parent.mkdir()
+        MetricsLog(path, validation_baseline=1.0)
+    os.utime(older, (1, 1))
+
+    assert latest_metrics(tmp_path) == newer

@@ -9,6 +9,7 @@ ultimi --lookback eventi irregolari; si confronta con i valori veri e con le sti
 
 import argparse
 import json
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -47,8 +48,12 @@ def main():
     parser.add_argument("--backbone-units", type=int, default=32)
     parser.add_argument("--epochs", type=int, default=15)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto",
+                        help="auto: GPU se disponibile, come gli altri script.")
     args = parser.parse_args()
     torch.manual_seed(args.seed)
+    device = torch.device("cuda" if args.device == "auto" and torch.cuda.is_available()
+                          else "cpu" if args.device == "auto" else args.device)
 
     # Tre serie indipendenti (semi diversi): training, validazione, test.
     parts = {name: event_windows(regime_events(args.events if name == "training" else args.events // 3,
@@ -65,18 +70,21 @@ def main():
         return inputs.float(), targets.float()
 
     model = MultiOutputForecaster(CfcConfig(2, args.hidden_size, backbone_units=args.backbone_units),
-                                  OUTPUTS, elapsed_channel=1)
+                                  OUTPUTS, elapsed_channel=1).to(device)
     loss = MultiOutputLoss(OUTPUTS)
     directory = Path("outputs") / f"event_model_{datetime.now(timezone.utc):%Y%m%dT%H%M%S_%fZ}"
     directory.mkdir(parents=True, exist_ok=False)
     validation = tensors(parts["validation"])
+    started = time.perf_counter()
     fit_and_select(model, torch.optim.Adam(model.parameters(), lr=0.005), loss,
-                   tensors(parts["training"]), validation, dt=1.0, epochs=args.epochs,
+                   tuple(tensor.to(device) for tensor in tensors(parts["training"])), validation,
+                   dt=1.0, epochs=args.epochs,
                    batch_size=128, final_epoch=True, predict=predict,
                    metrics=MetricsLog(directory / "metrics.csv",
                                       validation_baseline=validation[1].double().pow(2).mean().item()),
                    save_best=lambda *_: None)
 
+    seconds = time.perf_counter() - started
     test_inputs, _ = tensors(parts["test"])
     standardized = predict(model, test_inputs, dt=1.0).double()
     estimates = torch.stack([s.inverse(standardized[:, k]) for k, s in enumerate(target_scalers)], dim=1)
@@ -94,7 +102,9 @@ def main():
               f"finestra {results[name]['naive_mse']:.4f} | costante (media training) "
               f"{results[name]['constant_mse']:.4f} | oracolo {results[name]['oracle_constant_mse']:.4f}")
     (directory / "results.json").write_text(json.dumps(
-        {"arguments": vars(args), "results": results}, indent=2, allow_nan=False), encoding="utf-8")
+        {"arguments": vars(args), "device": str(device), "training_seconds": seconds,
+         "results": results}, indent=2, allow_nan=False), encoding="utf-8")
+    print(f"Dispositivo: {device} | training {seconds:.1f} s")
     print(f"Risultati in {directory}")
 
 

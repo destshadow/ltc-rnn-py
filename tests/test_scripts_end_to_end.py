@@ -354,8 +354,9 @@ def test_event_model_check_end_to_end(tmp_path, monkeypatch):
 
     monkeypatch.chdir(tmp_path)
     run(monkeypatch, check_event_model, "--events", "600", "--lookback", "10", "--epochs", "1",
-        "--hidden-size", "3", "--backbone-units", "4")
+        "--hidden-size", "3", "--backbone-units", "4", "--device", "cpu")
     report = strict_json(only(tmp_path.glob("outputs/event_model_*/results.json")))
+    assert report["device"] == "cpu" and report["training_seconds"] > 0
     assert set(report["results"]) == {"drift", "volatility"}
     assert all(value["cfc_mse"] >= 0 and value["naive_mse"] >= 0
                for value in report["results"].values())

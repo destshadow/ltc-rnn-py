@@ -26,7 +26,9 @@ class MultiOutputLoss(nn.Module):
         return {name: errors[index].item() for index, name in enumerate(self.outputs)}
 
     def forward(self, predictions: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-        return (self._squared_errors(predictions, targets).mean(dim=0) * self.weights).sum()
+        # I pesi seguono il dispositivo delle previsioni (training su GPU, validazione su CPU).
+        weights = self.weights.to(device=predictions.device, dtype=predictions.dtype)
+        return (self._squared_errors(predictions, targets).mean(dim=0) * weights).sum()
 
     def _squared_errors(self, predictions, targets):
         if predictions.shape != targets.shape or predictions.ndim != 2 \

@@ -359,3 +359,15 @@ def test_event_model_check_end_to_end(tmp_path, monkeypatch):
     assert set(report["results"]) == {"drift", "volatility"}
     assert all(value["cfc_mse"] >= 0 and value["naive_mse"] >= 0
                for value in report["results"].values())
+    for value in report["results"].values():
+        assert value["oracle_constant_mse"] <= value["constant_mse"] + 1e-12
+
+
+def test_constant_baseline_uses_the_training_mean_not_the_test_mean():
+    from experiments.check_event_model import constant_baselines
+
+    truth = torch.tensor([1.0, 3.0])                 # test mean 2, variance 1
+    baselines = constant_baselines(truth, training_mean=0.5)
+    assert baselines["oracle_constant_mse"] == pytest.approx(1.0)
+    # Honest constant: variance + (test mean − training mean)² = 1 + 1.5².
+    assert baselines["constant_mse"] == pytest.approx(1.0 + 1.5 ** 2)

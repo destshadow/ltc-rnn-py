@@ -27,6 +27,18 @@ from training.multi_loss import MultiOutputLoss
 OUTPUTS = ("drift", "volatility")
 
 
+def constant_baselines(truth: torch.Tensor, training_mean: float) -> dict[str, float]:
+    """Previsioni costanti: quella onesta usa la media del TRAINING; l'oracolo la media
+    del test stesso (informazione non disponibile a priori, solo come limite inferiore).
+    La differenza fra i due è il quadrato dello scarto fra le due medie.
+    """
+    truth = truth.double()
+    return {
+        "constant_mse": ((truth - training_mean) ** 2).mean().item(),
+        "oracle_constant_mse": truth.var(unbiased=False).item(),
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--events", type=int, default=60000)
@@ -76,10 +88,11 @@ def main():
         results[name] = {
             "cfc_mse": ((estimates[:, k] - truth[:, k]) ** 2).mean().item(),
             "naive_mse": ((naive[:, k] - truth[:, k]) ** 2).mean().item(),
-            "constant_mse": truth[:, k].var(unbiased=False).item(),
+            **constant_baselines(truth[:, k], target_scalers[k].mean),
         }
         print(f"  {name:10s} MSE contro il vero: CfC {results[name]['cfc_mse']:.4f} | "
-              f"finestra {results[name]['naive_mse']:.4f} | costante {results[name]['constant_mse']:.4f}")
+              f"finestra {results[name]['naive_mse']:.4f} | costante (media training) "
+              f"{results[name]['constant_mse']:.4f} | oracolo {results[name]['oracle_constant_mse']:.4f}")
     (directory / "results.json").write_text(json.dumps(
         {"arguments": vars(args), "results": results}, indent=2, allow_nan=False), encoding="utf-8")
     print(f"Risultati in {directory}")

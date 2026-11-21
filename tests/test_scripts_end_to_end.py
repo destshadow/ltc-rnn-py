@@ -347,3 +347,15 @@ def test_summarize_runs_never_mixes_ltc_and_cfc(series, tmp_path, monkeypatch, c
         output = capsys.readouterr().out
         assert f"rete {cell}" in output and expected in output
         assert json.loads(output.strip().splitlines()[-1])["validation"]["better"] <= 1
+
+
+def test_event_model_check_end_to_end(tmp_path, monkeypatch):
+    from experiments import check_event_model
+
+    monkeypatch.chdir(tmp_path)
+    run(monkeypatch, check_event_model, "--events", "600", "--lookback", "10", "--epochs", "1",
+        "--hidden-size", "3", "--backbone-units", "4")
+    report = strict_json(only(tmp_path.glob("outputs/event_model_*/results.json")))
+    assert set(report["results"]) == {"drift", "volatility"}
+    assert all(value["cfc_mse"] >= 0 and value["naive_mse"] >= 0
+               for value in report["results"].values())

@@ -377,10 +377,11 @@ def test_constant_baseline_uses_the_training_mean_not_the_test_mean():
 def test_summarize_event_runs_reports_ratios_and_refuses_mixed_devices(tmp_path, monkeypatch, capsys):
     from experiments import summarize_event_runs
 
-    def fake_run(name, seed, cfc, naive, device=None):
+    def fake_run(name, seed, cfc, naive, device=None, epochs=15):
         directory = tmp_path / name
         directory.mkdir()
-        report = {"arguments": {"seed": seed}, "results": {
+        report = {"arguments": {"seed": seed, "events": 600, "lookback": 10, "epochs": epochs,
+                                "hidden_size": 3, "backbone_units": 4}, "results": {
             "volatility": {"cfc_mse": cfc, "naive_mse": naive},
             "drift": {"cfc_mse": 1.0, "naive_mse": 1.0}}}
         if device:
@@ -397,3 +398,16 @@ def test_summarize_event_runs_reports_ratios_and_refuses_mixed_devices(tmp_path,
     with pytest.raises(SystemExit):
         run(monkeypatch, summarize_event_runs, str(runs[0]), str(gpu))
     assert "dispositivi" in capsys.readouterr().err
+
+    # The same folder passed twice counts once.
+    run(monkeypatch, summarize_event_runs, *map(str, runs), str(runs[0]))
+    assert json.loads(capsys.readouterr().out.strip().splitlines()[-1])["count"] == 3
+
+    for extra, message in ((fake_run("run_dup", 0, 0.7, 1.0, "cpu"), "Semi ripetuti"),
+                           (fake_run("f", 5, 0.7, 1.0, "cpu", epochs=30), "epochs")):
+        with pytest.raises(SystemExit):
+            run(monkeypatch, summarize_event_runs, *map(str, runs), str(extra))
+        error = capsys.readouterr().err
+        assert message in error
+        if message == "Semi ripetuti":
+            assert "seme 0: a, run_dup" in error            # both folders are named
